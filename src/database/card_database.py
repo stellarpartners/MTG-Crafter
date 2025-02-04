@@ -7,65 +7,61 @@ from tqdm import tqdm
 class CardDatabase:
     """Internal database of all Magic cards and their printings"""
     
-    def __init__(self, cache_dir: str = "cache/scryfall", data_dir: str = "data/database"):
-        # Cache directory for raw data
-        self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Data directory for processed data
+    def __init__(self, data_dir: str = "data/database"):
+        """Initialize the card database"""
         self.data_dir = Path(data_dir)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         
-        # Cache files (raw data from Scryfall)
-        self.bulk_cache_file = self.cache_dir / "bulk_cards_cache.json"
-        self.bulk_metadata_file = self.cache_dir / "bulk_cache_metadata.json"
+        # Initialize empty collections
+        self.cards = {}
+        self.printings = {}
+        self.sets = {}
+        self.oracle_ids = {}
         
-        # Database files (our processed data)
-        self.cards_file = self.data_dir / "cards.json"
-        self.printings_file = self.data_dir / "printings.json"
-        self.sets_file = self.data_dir / "sets.json"
-        self.metadata_file = self.data_dir / "metadata.json"
-        
-        # Initialize database structure
-        self.cards = {}  # oracle_id -> card data
-        self.printings = {}  # scryfall_id -> printing data
-        self.sets = {}  # set_code -> set data
-        self.name_to_oracle = {}  # card_name -> oracle_id
-        
-        # Statistics for reporting
-        self.stats = {
-            'total_cards': 0,
-            'unique_cards': 0,
-            'total_printings': 0,
-            'total_sets': 0
-        }
-        
-        self.load_database()
+        # Try to load existing database
+        try:
+            self.load_database()
+        except (FileNotFoundError, json.JSONDecodeError):
+            # If database doesn't exist or is corrupted, start with empty collections
+            print("Starting with fresh database...")
+            pass
     
     def load_database(self):
-        """Load or initialize the database"""
-        if self.cards_file.exists():
-            with open(self.cards_file, 'r') as f:
-                self.cards = json.load(f)
-            with open(self.printings_file, 'r') as f:
+        """Load card data from files"""
+        # Load printings
+        printings_file = self.data_dir / "printings.json"
+        if printings_file.exists():
+            with open(printings_file, 'r', encoding='utf-8') as f:
                 self.printings = json.load(f)
-            with open(self.sets_file, 'r') as f:
+        
+        # Load cards
+        cards_file = self.data_dir / "cards.json"
+        if cards_file.exists():
+            with open(cards_file, 'r', encoding='utf-8') as f:
+                self.cards = json.load(f)
+        
+        # Load sets
+        sets_file = self.data_dir / "sets.json"
+        if sets_file.exists():
+            with open(sets_file, 'r', encoding='utf-8') as f:
                 self.sets = json.load(f)
-                
-            # Rebuild name mapping
-            self.name_to_oracle = {
-                card['name'].lower(): oracle_id 
-                for oracle_id, card in self.cards.items()
-            }
+        
+        # Load oracle IDs
+        oracle_file = self.data_dir / "oracle_ids.json"
+        if oracle_file.exists():
+            with open(oracle_file, 'r', encoding='utf-8') as f:
+                self.oracle_ids = json.load(f)
     
     def save_database(self):
         """Save the current database state"""
-        with open(self.cards_file, 'w') as f:
+        with open(self.data_dir / "cards.json", 'w') as f:
             json.dump(self.cards, f, indent=2)
-        with open(self.printings_file, 'w') as f:
+        with open(self.data_dir / "printings.json", 'w') as f:
             json.dump(self.printings, f, indent=2)
-        with open(self.sets_file, 'w') as f:
+        with open(self.data_dir / "sets.json", 'w') as f:
             json.dump(self.sets, f, indent=2)
+        with open(self.data_dir / "oracle_ids.json", 'w') as f:
+            json.dump(self.oracle_ids, f, indent=2)
     
     def update_from_scryfall(self, raw_cards: List[Dict]):
         """Stage 1: Initial data load from Scryfall"""
@@ -86,7 +82,7 @@ class CardDatabase:
         self.cards = {}
         self.printings = {}
         self.sets = {}
-        self.name_to_oracle = {}
+        self.oracle_ids = {}
         
         # Track sets we encounter
         encountered_sets = set()
@@ -128,7 +124,7 @@ class CardDatabase:
                         'legalities': card['legalities'],
                         'printings': []  # List of scryfall_ids
                     }
-                    self.name_to_oracle[card_name.lower()] = card_name
+                    self.oracle_ids[card_name.lower()] = card_name
                 
                 pbar.update(1)
         
@@ -181,7 +177,7 @@ class CardDatabase:
     
     def get_card_by_name(self, name: str) -> Optional[Dict]:
         """Get card data by name"""
-        oracle_id = self.name_to_oracle.get(name.lower())
+        oracle_id = self.oracle_ids.get(name.lower())
         if oracle_id:
             return self.cards[oracle_id]
         return None

@@ -2,7 +2,15 @@
 
 from pathlib import Path
 from datetime import datetime
-from .theme_edhrec_collector import EDHRECThemeCollector
+import sys
+from os.path import dirname, abspath
+
+# Add src to Python path for imports
+root_dir = dirname(dirname(dirname(abspath(__file__))))
+sys.path.append(root_dir)
+
+# Use absolute imports
+from src.collectors.theme_edhrec_collector import EDHRECThemeCollector
 
 class ThemeCollector:
     """Manages all theme collectors"""
@@ -27,4 +35,8 @@ class ThemeCollector:
         """Update themes from all sources"""
         print("Updating EDHREC themes...")
         self.edhrec.update_themes()
-        # Add other collectors as they become available 
+        # Add other collectors as they become available
+
+if __name__ == "__main__":
+    collector = ThemeCollector()
+    collector.update_all() 

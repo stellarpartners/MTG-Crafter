@@ -1,64 +1,8 @@
-# Data files
-/data/raw/*
-/data/processed/*
-/data/database/*
-/data/themes/*
-
-# Keep data folders but ignore contents
-!data/raw/
-!data/processed/
-!data/database/
-!data/themes/
-!data/themes/edhrec/
-!data/raw/.gitkeep
-!data/processed/.gitkeep
-!data/database/.gitkeep
-!data/themes/.gitkeep
-!data/themes/edhrec/.gitkeep
-
-# Rules files
-/rules/MagicCompRules*.txt
-!rules/.gitkeep
-
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# IDE files
-.idea/
-.vscode/
-*.swp
-*.swo
-.DS_Store
-
-# Virtual environment
-venv/
-ENV/
-
-# Project specific
+# Cache and data directories with exceptions
 cache/*
 data/*
 
-# Keep folder structure
+# Keep folder structure and specific files
 !cache/.gitkeep
 !cache/scryfall/.gitkeep
 !cache/themes/.gitkeep
@@ -71,6 +15,17 @@ data/*
 !data/themes/.gitkeep
 !data/themes/edhrec/.gitkeep
 !data/keywords/.gitkeep
+!data/banlists/.gitkeep
+
+# Remove the blanket JSON ignore
+# *.json
+
+# Only ignore specific JSON files
+cache/**/*.json
+data/**/*.json
+
+# Keep ignoring text files
+*.txt
 
 # Python
 __pycache__/
@@ -89,6 +44,5 @@ ENV/
 *.swo
 .DS_Store
 
-# Project specific
-*.json
-*.txt 
+# Remove or comment out any lines referencing docs/rules
+# docs/rules/

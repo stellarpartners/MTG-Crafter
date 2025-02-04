@@ -5,16 +5,18 @@ import requests
 import time
 
 class BanlistCollector:
-    """Collects ban list data from various sources"""
+    """Collects banned and restricted card information"""
     
     def __init__(self, cache_dir: str = "cache/banlists", data_dir: str = "data/banlists"):
-        # Cache directory for raw downloads
         self.cache_dir = Path(cache_dir)
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Data directory for processed data
         self.data_dir = Path(data_dir)
+        
+        # Create necessary directories
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Set processed_dir to data_dir for consistency with other collectors
+        self.processed_dir = self.data_dir
         
         # Cache files (raw data)
         self.raw_banlists = self.cache_dir / "raw_banlists.json"

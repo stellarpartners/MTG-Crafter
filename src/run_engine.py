@@ -33,28 +33,52 @@ def print_cache_status(engine: DataEngine):
         'Metadata': engine.cache_dir / "scryfall/bulk_cache_metadata.json"
     }
     
+    has_valid_cache = True
     for name, path in cache_files.items():
         print(f"\nChecking {name}:")
         print(f"Path: {path}")
         if path.exists():
-            size = path.stat().st_size
-            modified = path.stat().st_mtime
-            print(f"- Status: Present")
-            print(f"- Size: {format_size(size)}")
-            print(f"- Modified: {format_date(modified)}")
+            try:
+                # Try to validate JSON
+                with open(path, 'r', encoding='utf-8') as f:
+                    json.load(f)
+                size = path.stat().st_size
+                modified = path.stat().st_mtime
+                print(f"- Status: Valid")
+                print(f"- Size: {format_size(size)}")
+                print(f"- Modified: {format_date(modified)}")
+            except json.JSONDecodeError:
+                print(f"- Status: Corrupted (Invalid JSON)")
+                has_valid_cache = False
+            except Exception as e:
+                print(f"- Status: Error ({str(e)})")
+                has_valid_cache = False
         else:
             print(f"- Status: Missing")
+            has_valid_cache = False
+    
+    if not has_valid_cache:
+        print("\n⚠️ Cache appears to be corrupted or incomplete!")
+        print("Recommendation: Use option 2 (Fresh Start) to rebuild the cache.")
+        return
     
     # Theme cache
     print("\nTheme Cache:")
     theme_cache = engine.cache_dir / "themes/edhrec/themes_raw.json"
     print(f"Path: {theme_cache}")
     if theme_cache.exists():
-        size = theme_cache.stat().st_size
-        modified = theme_cache.stat().st_mtime
-        print(f"- Status: Present")
-        print(f"- Size: {format_size(size)}")
-        print(f"- Modified: {format_date(modified)}")
+        try:
+            with open(theme_cache, 'r', encoding='utf-8') as f:
+                json.load(f)
+            size = theme_cache.stat().st_size
+            modified = theme_cache.stat().st_mtime
+            print(f"- Status: Valid")
+            print(f"- Size: {format_size(size)}")
+            print(f"- Modified: {format_date(modified)}")
+        except json.JSONDecodeError:
+            print(f"- Status: Corrupted (Invalid JSON)")
+        except Exception as e:
+            print(f"- Status: Error ({str(e)})")
     else:
         print(f"- Status: Missing")
     
@@ -63,11 +87,14 @@ def print_cache_status(engine: DataEngine):
     rules_cache = engine.cache_dir / "rules/MagicCompRules.txt"
     print(f"Path: {rules_cache}")
     if rules_cache.exists():
-        size = rules_cache.stat().st_size
-        modified = rules_cache.stat().st_mtime
-        print(f"- Status: Present")
-        print(f"- Size: {format_size(size)}")
-        print(f"- Modified: {format_date(modified)}")
+        try:
+            size = rules_cache.stat().st_size
+            modified = rules_cache.stat().st_mtime
+            print(f"- Status: Present")
+            print(f"- Size: {format_size(size)}")
+            print(f"- Modified: {format_date(modified)}")
+        except Exception as e:
+            print(f"- Status: Error ({str(e)})")
     else:
         print(f"- Status: Missing")
 
@@ -75,12 +102,11 @@ def show_main_menu():
     print("\nMain Menu:")
     print("1. Show Cache Status")
     print("2. Fresh Start (Download & Compile Everything)")
-    print("3. Compile Data from Cache")
-    print("4. Update Components")
-    print("5. Rebuild Data (Recompile from Cache)")
-    print("6. Cache Maintenance")
-    print("7. Exit")
-    return input("\nSelect an option (1-7): ")
+    print("3. Update Individual Component Cache")
+    print("4. Rebuild from Cache (Delete processed data & recompile)")
+    print("5. Cache Maintenance")
+    print("6. Exit")
+    return input("\nSelect an option (1-6): ")
 
 def show_update_menu():
     print("\nUpdate Menu:")
@@ -194,18 +220,12 @@ def rebuild_data(engine: DataEngine):
             return
     
     # Delete all processed data
-    data_dirs = [
-        Path("data/database"),
-        Path("data/themes"),
-        Path("data/metadata.json")
-    ]
-    
     print("\nCleaning up processed data...")
-    for path in data_dirs:
-        if path.is_file() and path.exists():
+    for path in engine.data_dir.glob("*"):
+        if path.is_file():
             print(f"Removing file: {path}")
             path.unlink()
-        elif path.is_dir() and path.exists():
+        elif path.is_dir():
             print(f"Removing directory: {path}")
             shutil.rmtree(path)
     
@@ -299,59 +319,69 @@ def handle_cache_maintenance(engine: DataEngine):
 
 def main():
     print_header()
-    engine = DataEngine()
     
     while True:
         choice = show_main_menu()
         
-        if choice == '1':
+        if choice == "1":  # Show Cache Status
+            engine = DataEngine(light_init=True)
             print_cache_status(engine)
+            input("\nPress Enter to continue...")
             
-        elif choice == '2':
-            print("\nStarting fresh download and compilation...")
+        elif choice == "2":  # Fresh Start
+            print("\nStarting fresh download and compilation of all data...")
+            engine = DataEngine()
             engine.cold_start(force_download=True)
+            input("\nPress Enter to continue...")
             
-        elif choice == '3':
-            print("\nCompiling from cached data...")
-            engine.cold_start(force_download=False)
-            
-        elif choice == '4':
+        elif choice == "3":  # Update Individual Component Cache
+            engine = DataEngine()
+            if not engine._has_card_cache():
+                print("\nCache is empty! Please use option 2 (Fresh Start) to download data first.")
+                input("\nPress Enter to continue...")
+                continue
+                
             while True:
                 update_choice = show_update_menu()
-                
-                if update_choice == '1':
-                    print("\nUpdating card data...")
-                    engine.update_if_needed('cards')
-                elif update_choice == '2':
-                    print("\nUpdating rules...")
+                if update_choice == "1":
+                    engine.update_if_needed('sets')
+                    input("\nPress Enter to continue...")
+                elif update_choice == "2":
                     engine.update_if_needed('rules')
-                elif update_choice == '3':
-                    print("\nUpdating themes...")
+                    input("\nPress Enter to continue...")
+                elif update_choice == "3":
                     engine.update_if_needed('themes')
-                elif update_choice == '4':
-                    print("\nUpdating all components...")
-                    engine.update_if_needed()
-                elif update_choice == '5':
+                    input("\nPress Enter to continue...")
+                elif update_choice == "4":
+                    engine.update_if_needed()  # Updates everything
+                    input("\nPress Enter to continue...")
+                elif update_choice == "5":  # Back to Main Menu
                     break
                 else:
                     print("\nInvalid choice. Please try again.")
-                
+                    input("\nPress Enter to continue...")
+            
+        elif choice == "4":  # Rebuild from Cache
+            engine = DataEngine()
+            if not engine._has_card_cache():
+                print("\nCache is empty! Please use option 2 (Fresh Start) to download data first.")
                 input("\nPress Enter to continue...")
-                
-        elif choice == '5':
+                continue
             rebuild_data(engine)
+            input("\nPress Enter to continue...")
             
-        elif choice == '6':
+        elif choice == "5":  # Cache Maintenance
+            engine = DataEngine()
             handle_cache_maintenance(engine)
+            input("\nPress Enter to continue...")
             
-        elif choice == '7':
-            print("\nExiting MTG Crafter Engine...")
-            sys.exit(0)
+        elif choice == "6":  # Exit
+            print("\nExiting...")
+            break
             
         else:
             print("\nInvalid choice. Please try again.")
-        
-        input("\nPress Enter to continue...")
+            input("\nPress Enter to continue...")
 
 if __name__ == "__main__":
     main() 

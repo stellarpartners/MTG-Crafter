@@ -10,12 +10,17 @@ class KeywordCollector:
     
     RULES_URL = "https://magic.wizards.com/en/rules"
     
-    def __init__(self, data_dir: str = "data/raw"):
+    def __init__(self, cache_dir: str = "cache/rules", data_dir: str = "data/keywords"):
+        self.cache_dir = Path(cache_dir)
         self.data_dir = Path(data_dir)
-        self.processed_dir = Path("data/processed")
-        self.rules_dir = Path("rules")
-        self.rules_dir.mkdir(parents=True, exist_ok=True)
-        self.processed_dir.mkdir(parents=True, exist_ok=True)
+        self.rules_dir = self.cache_dir  # Use cache_dir for rules storage
+        
+        # Create necessary directories
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Update processed_dir to be under data_dir
+        self.processed_dir = self.data_dir
         
     def save_json_alphabetically(self, data: Dict, file_path: Path):
         """Save dictionary data to JSON with alphabetically sorted keys"""

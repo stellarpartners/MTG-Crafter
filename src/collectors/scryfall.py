@@ -17,20 +17,20 @@ class ScryfallCollector:
     # Scryfall recommends no more than 10 requests per second
     REQUEST_DELAY = 0.1  # 100ms between requests
     
-    def __init__(self, cache_dir: str = "cache/scryfall", data_dir: str = "data/database"):
-        # Cache directory for raw downloads
+    def __init__(self, cache_dir: str = "cache/scryfall", data_dir: str = "data/database", skip_load: bool = False):
         self.cache_dir = Path(cache_dir)
+        self.data_dir = Path(data_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        
+        if not skip_load:
+            self.database = CardDatabase(data_dir=data_dir)
+        else:
+            self.database = None
         
         # Cache files
         self.bulk_cache_file = self.cache_dir / "bulk_cards_cache.json"
         self.bulk_metadata_file = self.cache_dir / "bulk_cache_metadata.json"
-        
-        # Initialize database with processed data directory
-        self.database = CardDatabase(
-            cache_dir=str(self.cache_dir),
-            data_dir=str(data_dir)
-        )
         
         # Request tracking
         self.last_request_time = 0
@@ -327,7 +327,8 @@ class ScryfallCollector:
                 
                 with open(self.bulk_cache_file, 'r') as f:
                     cards = json.load(f)
-                self.database.update_from_scryfall(cards)
+                if self.database:  # Only update database if it exists
+                    self.database.update_from_scryfall(cards)
                 return cards
             else:
                 print("\nCache is outdated:")
@@ -337,7 +338,8 @@ class ScryfallCollector:
                 if use_cache:
                     with open(self.bulk_cache_file, 'r') as f:
                         cards = json.load(f)
-                    self.database.update_from_scryfall(cards)
+                    if self.database:  # Only update database if it exists
+                        self.database.update_from_scryfall(cards)
                     return cards
         
         # Download new data
@@ -373,8 +375,6 @@ class ScryfallCollector:
                     'card_count': len(cards)
                 }, f, indent=2)
             
-            # Update database
-            self.database.update_from_scryfall(cards)
             return cards
             
         except Exception as e:
@@ -383,7 +383,8 @@ class ScryfallCollector:
                 print("Falling back to cached data...")
                 with open(self.bulk_cache_file, 'r') as f:
                     cards = json.load(f)
-                self.database.update_from_scryfall(cards)
+                if self.database:  # Only update database if it exists
+                    self.database.update_from_scryfall(cards)
                 return cards
             return []
     

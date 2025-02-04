@@ -73,31 +73,72 @@ class EDHRECThemeCollector:
             soup = BeautifulSoup(response.text, 'html.parser')
             themes = {}
             
-            # Process theme sections
-            for section in soup.find_all('section', class_='container'):
-                category = section.find('h2')
-                if not category:
-                    continue
+            # Look for cards with the new class name pattern
+            cards = soup.find_all('div', class_=lambda x: x and 'Card_container' in x)
+            
+            if not cards:
+                print("No theme cards found. Website structure might have changed.")
+                print("Saving HTML for inspection...")
+                with open(self.cache_dir / "last_response.html", 'w', encoding='utf-8') as f:
+                    f.write(response.text)
+                return {}
+            
+            print(f"Found {len(cards)} theme cards")
+            current_category = "Uncategorized"
+            themes[current_category] = {}
+            
+            for card in cards:
+                try:
+                    # Find the name wrapper and extract the name
+                    name_wrapper = card.find('div', class_=lambda x: x and 'Card_nameWrapper' in x)
+                    if not name_wrapper:
+                        continue
+                        
+                    name = name_wrapper.get_text().strip()
                     
-                category_name = category.text.strip()
-                themes[category_name] = {}
-                
-                # Process themes in this category
-                for theme in section.find_all('div', class_='card'):
-                    name = theme.find('h3').text.strip()
-                    deck_count = int(theme.find('span', class_='deck-count').text.strip())
-                    colors = [c.lower() for c in theme.get('data-colors', '').split()]
+                    # Find the label for deck count
+                    label = card.find('div', class_=lambda x: x and 'CardLabel_label' in x)
+                    deck_count = 0
+                    if label:
+                        # Extract number from text like "1,234 decks"
+                        count_text = label.get_text().strip()
+                        if 'decks' in count_text.lower():
+                            deck_count = int(count_text.split()[0].replace(',', ''))
                     
-                    themes[category_name][name] = {
+                    # Get color identity from data attribute or class
+                    colors = []
+                    color_div = card.find('div', {'data-colors': True})
+                    if color_div:
+                        colors = [c.lower() for c in color_div['data-colors'].split()]
+                    
+                    themes[current_category][name] = {
                         'colors': colors,
                         'deck_count': deck_count
                     }
                     print(f"Found theme: {name} ({deck_count} decks) - Colors: {colors}")
+                    
+                except Exception as e:
+                    print(f"Error processing theme card: {e}")
+                    continue
+            
+            # Remove empty categories
+            themes = {k: v for k, v in themes.items() if v}
+            
+            if not themes:
+                print("No themes were successfully processed")
+                return {}
+            
+            # Save raw data for debugging
+            with open(self.cache_dir / "raw_themes.json", 'w', encoding='utf-8') as f:
+                json.dump(themes, f, indent=2)
             
             return themes
             
         except Exception as e:
             print(f"Error collecting themes: {e}")
+            if 'response' in locals():
+                print(f"Response status: {response.status_code}")
+                print(f"Response headers: {response.headers}")
             return {}
 
 if __name__ == "__main__":
