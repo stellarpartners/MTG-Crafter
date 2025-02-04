@@ -1,0 +1,610 @@
+# Magic: The Gathering Banned & Restricted Lists
+
+Last updated: 2025-02-04
+
+## Standard
+
+
+## Modern
+
+- Amped Raptor
+- Ancient Den
+- Arcum's Astrolabe
+- Birthing Pod
+- Blazing Shoal
+- Bridge from Below
+- Chrome Mox
+- Cloudpost
+- Dark Depths
+- Deathrite Shaman
+- Dig Through Time
+- Dread Return
+- Eye of Ugin
+- Field of the Dead
+- Fury
+- Gitaxian Probe
+- Glimpse of Nature
+- Golgari Grave-Troll
+- Great Furnace
+- Grief
+- Hogaak, Arisen Necropolis
+- Hypergenesis
+- Jegantha, the Wellspring
+- Krark-Clan Ironworks
+- Lurrus of the Dream-Den
+- Mental Misstep
+- Mycosynth Lattice
+- Mystic Sanctuary
+- Nadu, Winged Wisdom
+- Oko, Thief of Crowns
+- Once Upon a Time
+- Ponder
+- Punishing Fire
+- Rite of Flame
+- Seat of the Synod
+- Second Sunrise
+- Seething Song
+- Sensei's Divining Top
+- Simian Spirit Guide
+- Skullclamp
+- Summer Bloom
+- The One Ring
+- Tibalt's Trickery
+- Treasure Cruise
+- Tree of Tales
+- Umezawa's Jitte
+- Up the Beanstalk
+- Uro, Titan of Nature's Wrath
+- Vault of Whispers
+- Violent Outburst
+- Yorion, Sky Nomad
+
+## Legacy
+
+- Adriana's Valor
+- Advantageous Proclamation
+- Aerialephant
+- Ambassador Blorpityblorpboop
+- Amulet of Quoz
+- Ancestral Recall
+- Arcum's Astrolabe
+- Assemble the Rank and Vile
+- Baaallerina
+- Backup Plan
+- Balance
+- _____ Balls of Fire
+- Bazaar of Baghdad
+- Bioluminary
+- _____ Bird Gets the Worm
+- Black Lotus
+- Brago's Favor
+- Bronze Tablet
+- Carnival Carnivore
+- Channel
+- Chaos Orb
+- Chicken Troupe
+- Clandestine Chameleon
+- Cleanse
+- Coming Attraction
+- Command Performance
+- Complaints Clerk
+- Contract from Below
+- Crusade
+- Darkpact
+- Deadbeat Attendant
+- Deathrite Shaman
+- Dee Kay, Finder of the Lost
+- Demonic Attorney
+- Demonic Consultation
+- Demonic Tutor
+- Dig Through Time
+- Discourtesy Clerk
+- Done for the Day
+- Double Stroke
+- Draconian Gate-Bot
+- Dreadhorde Arcanist
+- Earthcraft
+- Echoing Boon
+- Emissary's Ploy
+- Expressive Iteration
+- Falling Star
+- Fastbond
+- Fight the _____ Fight
+- Finishing Move
+- Flash
+- Frantic Search
+- Gitaxian Probe
+- Glitterflitter
+- _____ Goblin
+- Goblin Recruiter
+- Grief
+- Gush
+- Hermit Druid
+- Hired Heist
+- Hold the Perimeter
+- Hymn of the Wilds
+- Immediate Action
+- Imperial Seal
+- Imprison
+- Incendiary Dissent
+- Invoke Prejudice
+- Iterative Analysis
+- Jeweled Bird
+- Jihad
+- Last Voyage of the _____
+- Library of Alexandria
+- "Lifetime" Pass Holder
+- Line Cutter
+- Lineprancers
+- Lurrus of the Dream-Den
+- Make a _____ Splash
+- Mana Crypt
+- Mana Drain
+- Mana Vault
+- Memory Jar
+- Mental Misstep
+- Mind Twist
+- Minotaur de Force
+- Mishra's Workshop
+- Monitor Monitor
+- Mox Emerald
+- Mox Jet
+- Mox Pearl
+- Mox Ruby
+- Mox Sapphire
+- Muzzio's Preparations
+- Myra the Magnificent
+- Mystical Tutor
+- "Name Sticker" Goblin
+- Natural Unity
+- Necropotence
+- Oath of Druids
+- Oko, Thief of Crowns
+- _____-o-saurus
+- Park Bleater
+- Petting Zookeeper
+- Pin Collection
+- Power Play
+- Pradesh Gypsies
+- Prize Wall
+- Proficient Pyrodancer
+- Psychic Frog
+- Quick Fixer
+- Rad Rascal
+- Ragavan, Nimble Pilferer
+- Rebirth
+- Ride Guide
+- Robo-Piñata
+- _____ _____ Rocketship
+- Roxi, Publicist to the Stars
+- Scampire
+- Seasoned Buttoneer
+- Secrets of Paradise
+- Secret Summoning
+- Sensei's Divining Top
+- Sentinel Dispatch
+- Shahrazad
+- Skullclamp
+- Sol Ring
+- Soul Swindler
+- Sovereign's Realm
+- Spinnerette, Arachnobat
+- Squirrel Squatters
+- Step Right Up
+- Stiltstrider
+- Stone-Throwing Devils
+- Strip Mine
+- Summoner's Bond
+- Survival of the Fittest
+- Sword-Swallowing Seraph
+- Tempest Efreet
+- The Most Dangerous Gamer
+- Ticketomaton
+- Timetwister
+- Time Vault
+- Time Walk
+- Timmerian Fiends
+- Tinker
+- Tolarian Academy
+- Treasure Cruise
+- _____ _____ _____ Trespasser
+- Tusk and Whiskers
+- Underworld Breach
+- Unexpected Potential
+- Vampiric Tutor
+- Vexing Bauble
+- Weight Advantage
+- Wheel of Fortune
+- White Plume Adventurer
+- Wicker Picker
+- Windfall
+- Wizards of the _____
+- Wolf in _____ Clothing
+- Worldknit
+- Wrenn and Six
+- Yawgmoth's Bargain
+- Yawgmoth's Will
+- Zirda, the Dawnwaker
+
+## Vintage
+
+### Banned
+
+- Adriana's Valor
+- Advantageous Proclamation
+- Aerialephant
+- Ambassador Blorpityblorpboop
+- Amulet of Quoz
+- Assemble the Rank and Vile
+- Baaallerina
+- Backup Plan
+- _____ Balls of Fire
+- Bioluminary
+- _____ Bird Gets the Worm
+- Brago's Favor
+- Bronze Tablet
+- Carnival Carnivore
+- Chaos Orb
+- Chicken Troupe
+- Clandestine Chameleon
+- Cleanse
+- Coming Attraction
+- Command Performance
+- Complaints Clerk
+- Contract from Below
+- Crusade
+- Darkpact
+- Deadbeat Attendant
+- Dee Kay, Finder of the Lost
+- Demonic Attorney
+- Discourtesy Clerk
+- Done for the Day
+- Double Stroke
+- Draconian Gate-Bot
+- Echoing Boon
+- Emissary's Ploy
+- Falling Star
+- Fight the _____ Fight
+- Finishing Move
+- Glitterflitter
+- _____ Goblin
+- Hired Heist
+- Hold the Perimeter
+- Hymn of the Wilds
+- Immediate Action
+- Imprison
+- Incendiary Dissent
+- Invoke Prejudice
+- Iterative Analysis
+- Jeweled Bird
+- Jihad
+- Last Voyage of the _____
+- "Lifetime" Pass Holder
+- Line Cutter
+- Lineprancers
+- Make a _____ Splash
+- Minotaur de Force
+- Monitor Monitor
+- Muzzio's Preparations
+- Myra the Magnificent
+- "Name Sticker" Goblin
+- Natural Unity
+- _____-o-saurus
+- Park Bleater
+- Petting Zookeeper
+- Pin Collection
+- Power Play
+- Pradesh Gypsies
+- Prize Wall
+- Proficient Pyrodancer
+- Quick Fixer
+- Rad Rascal
+- Rebirth
+- Ride Guide
+- Robo-Piñata
+- _____ _____ Rocketship
+- Roxi, Publicist to the Stars
+- Scampire
+- Seasoned Buttoneer
+- Secrets of Paradise
+- Secret Summoning
+- Sentinel Dispatch
+- Shahrazad
+- Soul Swindler
+- Sovereign's Realm
+- Spinnerette, Arachnobat
+- Squirrel Squatters
+- Step Right Up
+- Stiltstrider
+- Stone-Throwing Devils
+- Summoner's Bond
+- Sword-Swallowing Seraph
+- Tempest Efreet
+- The Most Dangerous Gamer
+- Ticketomaton
+- Timmerian Fiends
+- _____ _____ _____ Trespasser
+- Tusk and Whiskers
+- Unexpected Potential
+- Weight Advantage
+- Wicker Picker
+- Wizards of the _____
+- Wolf in _____ Clothing
+- Worldknit
+
+### Restricted
+
+- Ancestral Recall
+- Balance
+- Black Lotus
+- Brainstorm
+- Chalice of the Void
+- Channel
+- Demonic Consultation
+- Demonic Tutor
+- Dig Through Time
+- Flash
+- Gitaxian Probe
+- Golgari Grave-Troll
+- Gush
+- Imperial Seal
+- Karn, the Great Creator
+- Library of Alexandria
+- Lion's Eye Diamond
+- Lodestone Golem
+- Lotus Petal
+- Mana Crypt
+- Mana Vault
+- Memory Jar
+- Mental Misstep
+- Merchant Scroll
+- Mind's Desire
+- Monastery Mentor
+- Mox Emerald
+- Mox Jet
+- Mox Pearl
+- Mox Ruby
+- Mox Sapphire
+- Mystical Tutor
+- Mystic Forge
+- Narset, Parter of Veils
+- Necropotence
+- Sol Ring
+- Strip Mine
+- Thorn of Amethyst
+- Timetwister
+- Time Vault
+- Time Walk
+- Tinker
+- Tolarian Academy
+- Treasure Cruise
+- Trinisphere
+- Urza's Saga
+- Vampiric Tutor
+- Vexing Bauble
+- Wheel of Fortune
+- Windfall
+- Yawgmoth's Will
+
+## Commander
+
+- Adriana's Valor
+- Advantageous Proclamation
+- Amulet of Quoz
+- Ancestral Recall
+- Assemble the Rank and Vile
+- Backup Plan
+- Balance
+- Biorhythm
+- Black Lotus
+- Brago's Favor
+- Braids, Cabal Minion
+- Bronze Tablet
+- Channel
+- Chaos Orb
+- Cleanse
+- Coalition Victory
+- Contract from Below
+- Crusade
+- Darkpact
+- Demonic Attorney
+- Dockside Extortionist
+- Double Stroke
+- Echoing Boon
+- Emissary's Ploy
+- Emrakul, the Aeons Torn
+- Erayo, Soratami Ascendant // Erayo's Essence
+- Falling Star
+- Fastbond
+- Flash
+- Gifts Ungiven
+- Golos, Tireless Pilgrim
+- Griselbrand
+- Hired Heist
+- Hold the Perimeter
+- Hullbreacher
+- Hymn of the Wilds
+- Immediate Action
+- Imprison
+- Incendiary Dissent
+- Invoke Prejudice
+- Iona, Shield of Emeria
+- Iterative Analysis
+- Jeweled Bird
+- Jeweled Lotus
+- Jihad
+- Karakas
+- Leovold, Emissary of Trest
+- Library of Alexandria
+- Limited Resources
+- Lutri, the Spellchaser
+- Mana Crypt
+- Mox Emerald
+- Mox Jet
+- Mox Pearl
+- Mox Ruby
+- Mox Sapphire
+- Muzzio's Preparations
+- Nadu, Winged Wisdom
+- Natural Unity
+- Panoptic Mirror
+- Paradox Engine
+- Power Play
+- Pradesh Gypsies
+- Primeval Titan
+- Prophet of Kruphix
+- Rebirth
+- Recurring Nightmare
+- Rofellos, Llanowar Emissary
+- Secrets of Paradise
+- Secret Summoning
+- Sentinel Dispatch
+- Shahrazad
+- Sovereign's Realm
+- Stone-Throwing Devils
+- Summoner's Bond
+- Sundering Titan
+- Sway of the Stars
+- Sylvan Primordial
+- Tempest Efreet
+- Time Vault
+- Time Walk
+- Timmerian Fiends
+- Tinker
+- Tolarian Academy
+- Trade Secrets
+- Unexpected Potential
+- Upheaval
+- Weight Advantage
+- Worldknit
+- Yawgmoth's Bargain
+
+## Pioneer
+
+- Amalia Benavides Aguirre
+- Balustrade Spy
+- Bloodstained Mire
+- Expressive Iteration
+- Felidar Guardian
+- Field of the Dead
+- Flooded Strand
+- Geological Appraiser
+- Inverter of Truth
+- Jegantha, the Wellspring
+- Karn, the Great Creator
+- Kethis, the Hidden Hand
+- Leyline of Abundance
+- Lurrus of the Dream-Den
+- Nexus of Fate
+- Oko, Thief of Crowns
+- Once Upon a Time
+- Polluted Delta
+- Sorin, Imperious Bloodlord
+- Teferi, Time Raveler
+- Undercity Informer
+- Underworld Breach
+- Uro, Titan of Nature's Wrath
+- Veil of Summer
+- Walking Ballista
+- Wilderness Reclamation
+- Windswept Heath
+- Winota, Joiner of Forces
+- Wooded Foothills
+
+## Pauper
+
+- Aarakocra Sneak
+- Adriana's Valor
+- Aerialephant
+- All That Glitters
+- Arcum's Astrolabe
+- Assemble the Rank and Vile
+- Atog
+- _____ Bird Gets the Worm
+- Bonder's Ornament
+- Brago's Favor
+- Carnival Carnivore
+- Chatterstorm
+- Chicken Troupe
+- Cloud of Faeries
+- Cloudpost
+- Coming Attraction
+- Command Performance
+- Cranial Plating
+- Cranial Ram
+- Daze
+- Deadbeat Attendant
+- Disciple of the Vault
+- Draconian Gate-Bot
+- Empty the Warrens
+- Fall from Favor
+- Finishing Move
+- Frantic Search
+- Galvanic Relay
+- Gitaxian Probe
+- Glitterflitter
+- _____ Goblin
+- Grapeshot
+- Gush
+- High Tide
+- Hired Heist
+- Hymn to Tourach
+- Immediate Action
+- Incendiary Dissent
+- Invigorate
+- Line Cutter
+- Minotaur de Force
+- Monastery Swiftspear
+- Muzzio's Preparations
+- Mystic Sanctuary
+- "Name Sticker" Goblin
+- Natural Unity
+- _____-o-saurus
+- Peregrine Drake
+- Petting Zookeeper
+- Pradesh Gypsies
+- Prize Wall
+- Prophetic Prism
+- Rad Rascal
+- Ride Guide
+- Robo-Piñata
+- Seasoned Buttoneer
+- Secrets of Paradise
+- Sentinel Dispatch
+- Sinkhole
+- Sojourner's Companion
+- Soul Swindler
+- Step Right Up
+- Stiltstrider
+- Stirring Bard
+- Stone-Throwing Devils
+- Temporal Fissure
+- Ticketomaton
+- Treasure Cruise
+- Underdark Explorer
+- Vicious Battlerager
+- Wizards of the _____
+- Wolf in _____ Clothing
+
+## Brawl
+
+- Agent of Treachery
+- Chalice of the Void
+- Channel
+- Demonic Tutor
+- Disruptor Flute
+- Drannith Magistrate
+- Field of the Dead
+- Gideon's Intervention
+- Lutri, the Spellchaser
+- Meddling Mage
+- Natural Order
+- Nexus of Fate
+- Oko, Thief of Crowns
+- Phyrexian Revoker
+- Pithing Needle
+- Runed Halo
+- Sorcerous Spyglass
+- Tainted Pact
+- Ugin, the Spirit Dragon
+
