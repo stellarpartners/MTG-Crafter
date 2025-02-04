@@ -4,14 +4,14 @@ A Magic: The Gathering data collection and search engine.
 
 ## Features
 
-### Data Collection (`gather_data.py`)
+### Data Collection (`1.gather_data.py`)
 - Smart set-based data collection from Scryfall
 - Automatic cache management
 - Format banlist tracking
 - Theme collection from EDHREC
 - Rules and keyword processing
 
-### Card Search (`search_cards.py`)
+### Card Search (`2.search_cards.py`)
 - Search by exact card name
 - Full text search
 - View all printings with prices
