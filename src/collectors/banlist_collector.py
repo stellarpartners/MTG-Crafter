@@ -32,6 +32,13 @@ class BanlistCollector:
             
             try:
                 response = requests.get(url, params=params)
+                
+                # Handle case where format has no banned cards
+                if response.status_code == 404:
+                    print(f"No banned cards found for {format_name}")
+                    banned_cards[format_name] = []
+                    continue
+                    
                 response.raise_for_status()
                 data = response.json()
                 
@@ -68,8 +75,12 @@ class BanlistCollector:
                 print(f"Found {len(banned_list)} banned/restricted cards in {format_name}")
                 
             except requests.exceptions.RequestException as e:
-                print(f"Error fetching banned cards for {format_name}: {e}")
-                banned_cards[format_name] = []
+                if hasattr(e.response, 'status_code') and e.response.status_code == 404:
+                    print(f"No banned cards found for {format_name}")
+                    banned_cards[format_name] = []
+                else:
+                    print(f"Error fetching banned cards for {format_name}: {e}")
+                    banned_cards[format_name] = []
         
         # Save raw banned data
         output_file = self.processed_dir / "banned_cards.json"

@@ -1,6 +1,55 @@
 # MTG Crafter
 
-MTG Crafter is a tool for building and analyzing Magic: The Gathering decks. It helps players create optimized decks by analyzing card synergies, mana curves, and color distributions while enforcing format-specific rules.
+A Magic: The Gathering data processing engine.
+
+## Directory Structure
+
+```
+project/
+├── cache/                  # Raw downloaded data
+│   ├── scryfall/          # Raw Scryfall downloads
+│   │   ├── bulk_data.json
+│   │   └── metadata.json
+│   ├── themes/            # Raw theme data
+│   │   └── edhrec/
+│   └── rules/             # Downloaded rules
+│
+├── data/                   # Processed data
+│   ├── database/          # Core card database
+│   ├── themes/            # Processed themes
+│   └── keywords/          # Processed keywords
+```
+
+## Usage
+
+Run the engine with:
+```bash
+python src/run_engine.py
+```
+
+### Main Menu Options:
+1. Show Cache Status - View status of downloaded data
+2. Fresh Start - Download and compile everything
+3. Compile Data from Cache - Process existing downloads
+4. Update Components - Update specific components
+5. Rebuild Data - Recompile from existing cache
+6. Cache Maintenance - Manage cached data
+7. Exit
+
+### Cache Maintenance:
+- Show Cache Size
+- Clean Old Cache Files
+- Verify Cache Integrity
+- Delete All Cache
+
+## Development
+
+### Key Components:
+- DataEngine: Main orchestrator
+- ScryfallCollector: Handles Scryfall API interaction
+- CardDatabase: Processes and stores card data
+- ThemeCollector: Manages theme data from various sources
+- KeywordCollector: Processes card keywords and rules
 
 ## Features
 

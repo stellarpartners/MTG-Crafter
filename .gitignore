@@ -1,12 +1,24 @@
 # Data files
 /data/raw/*
 /data/processed/*
+/data/database/*
+/data/themes/*
 
 # Keep data folders but ignore contents
 !data/raw/
 !data/processed/
+!data/database/
+!data/themes/
+!data/themes/edhrec/
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+!data/database/.gitkeep
+!data/themes/.gitkeep
+!data/themes/edhrec/.gitkeep
+
+# Rules files
+/rules/MagicCompRules*.txt
+!rules/.gitkeep
 
 # Python
 __pycache__/
@@ -40,4 +52,10 @@ wheels/
 
 # Virtual environment
 venv/
-ENV/ 
+ENV/
+
+# Project specific
+cache/
+data/
+*.json
+*.txt 

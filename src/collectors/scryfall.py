@@ -1,28 +1,42 @@
 import requests
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 import time
 from tqdm import tqdm
 from datetime import datetime, timedelta
 import hashlib
+from database.card_database import CardDatabase
 
 class ScryfallCollector:
     """Handles data collection from Scryfall API"""
     
     BASE_URL = "https://api.scryfall.com"
-    BULK_DATA_URL = f"{BASE_URL}/bulk-data"
+    BULK_DATA_URL = "https://api.scryfall.com/bulk-data"
     
     # Scryfall recommends no more than 10 requests per second
     REQUEST_DELAY = 0.1  # 100ms between requests
     
-    def __init__(self, data_dir: str = "data/raw"):
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        self.last_request_time = 0
-        self.metadata_file = self.data_dir / "metadata.json"
-        self.load_metadata()
+    def __init__(self, cache_dir: str = "cache/scryfall", data_dir: str = "data/database"):
+        # Cache directory for raw downloads
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         
+        # Cache files
+        self.bulk_cache_file = self.cache_dir / "bulk_cards_cache.json"
+        self.bulk_metadata_file = self.cache_dir / "bulk_cache_metadata.json"
+        
+        # Initialize database with processed data directory
+        self.database = CardDatabase(
+            cache_dir=str(self.cache_dir),
+            data_dir=str(data_dir)
+        )
+        
+        # Request tracking
+        self.last_request_time = 0
+        self.metadata_file = self.cache_dir / "metadata.json"
+        self.load_metadata()
+    
     def load_metadata(self):
         """Load or initialize metadata tracking"""
         if self.metadata_file.exists():
@@ -96,7 +110,7 @@ class ScryfallCollector:
         cards = response.json()
         
         # Save raw data
-        output_file = self.data_dir / "oracle_cards.json"
+        output_file = self.cache_dir / "oracle_cards.json"
         with open(output_file, 'w') as f:
             json.dump(cards, f)
             
@@ -120,7 +134,7 @@ class ScryfallCollector:
         sets = response.json()['data']
         
         # Save raw data
-        output_file = self.data_dir / "sets.json"
+        output_file = self.cache_dir / "sets.json"
         with open(output_file, 'w') as f:
             json.dump(sets, f)
             
@@ -138,7 +152,7 @@ class ScryfallCollector:
             cards.append(card_data)
             
         # Save sample data
-        output_file = self.data_dir / "sample_cards.json"
+        output_file = self.cache_dir / "sample_cards.json"
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(cards, f, indent=2)
             
@@ -222,7 +236,7 @@ class ScryfallCollector:
             standard_sets.sort(key=lambda x: x.get('released_at', ''), reverse=True)
             
             # Save Standard sets data
-            output_file = self.data_dir / "standard_sets.json"
+            output_file = self.cache_dir / "standard_sets.json"
             with open(output_file, 'w', encoding='utf-8') as f:
                 json.dump(standard_sets, f, indent=2)
             
@@ -247,7 +261,7 @@ class ScryfallCollector:
         
         try:
             # Check if we need to update
-            set_file = self.data_dir / f"cards_{set_code}.json"
+            set_file = self.cache_dir / f"cards_{set_code}.json"
             if not force_update and set_file.exists():
                 with open(set_file, 'r') as f:
                     cards = json.load(f)
@@ -301,6 +315,118 @@ class ScryfallCollector:
             print(f"Unexpected error processing set {set_code}: {e}")
             return []
 
+    def fetch_all_cards(self, force_download: bool = False) -> List[Dict]:
+        """Download or load cached Oracle cards from Scryfall bulk data"""
+        cache_status = self._check_cache()
+        
+        if not force_download and cache_status.exists:
+            if cache_status.is_current:
+                print("\nUsing cached card data...")
+                print(f"Cache date: {cache_status.cache_date}")
+                print(f"Cards in cache: {cache_status.card_count:,}")
+                
+                with open(self.bulk_cache_file, 'r') as f:
+                    cards = json.load(f)
+                self.database.update_from_scryfall(cards)
+                return cards
+            else:
+                print("\nCache is outdated:")
+                print(f"Cache date: {cache_status.cache_date}")
+                print(f"Latest Scryfall update: {cache_status.latest_update}")
+                use_cache = input("Use cached data anyway? (y/N): ").lower() == 'y'
+                if use_cache:
+                    with open(self.bulk_cache_file, 'r') as f:
+                        cards = json.load(f)
+                    self.database.update_from_scryfall(cards)
+                    return cards
+        
+        # Download new data
+        print("\nDownloading fresh card data from Scryfall...")
+        try:
+            # Get bulk data information
+            response = requests.get(self.BULK_DATA_URL)
+            response.raise_for_status()
+            bulk_data = response.json()
+            
+            # Find the Oracle cards download URL
+            oracle_bulk = next(
+                data for data in bulk_data['data'] 
+                if data['type'] == 'oracle_cards'
+            )
+            
+            print(f"Downloading {oracle_bulk['size'] // 1024 // 1024}MB of card data...")
+            print(f"Last updated: {oracle_bulk['updated_at']}")
+            
+            # Download the bulk data file
+            cards_response = requests.get(oracle_bulk['download_uri'])
+            cards_response.raise_for_status()
+            cards = cards_response.json()
+            
+            # Save to cache
+            print("Saving to cache...")
+            with open(self.bulk_cache_file, 'w') as f:
+                json.dump(cards, f)
+            with open(self.bulk_metadata_file, 'w') as f:
+                json.dump({
+                    'downloaded_at': datetime.now().isoformat(),
+                    'last_updated': oracle_bulk['updated_at'],
+                    'card_count': len(cards)
+                }, f, indent=2)
+            
+            # Update database
+            self.database.update_from_scryfall(cards)
+            return cards
+            
+        except Exception as e:
+            print(f"Error downloading cards: {e}")
+            if cache_status.exists:
+                print("Falling back to cached data...")
+                with open(self.bulk_cache_file, 'r') as f:
+                    cards = json.load(f)
+                self.database.update_from_scryfall(cards)
+                return cards
+            return []
+    
+    def _check_cache(self) -> 'CacheStatus':
+        """Check status of cached data"""
+        if not self.bulk_cache_file.exists() or not self.bulk_metadata_file.exists():
+            return CacheStatus(exists=False)
+            
+        try:
+            # Get cache metadata
+            with open(self.bulk_metadata_file, 'r') as f:
+                metadata = json.load(f)
+            
+            # Get latest Scryfall update
+            response = requests.get(self.BULK_DATA_URL)
+            response.raise_for_status()
+            bulk_data = response.json()
+            oracle_bulk = next(
+                data for data in bulk_data['data'] 
+                if data['type'] == 'oracle_cards'
+            )
+            
+            return CacheStatus(
+                exists=True,
+                is_current=metadata['last_updated'] == oracle_bulk['updated_at'],
+                cache_date=metadata['downloaded_at'],
+                latest_update=oracle_bulk['updated_at'],
+                card_count=metadata['card_count']
+            )
+        except Exception as e:
+            print(f"Error checking cache: {e}")
+            return CacheStatus(exists=False)
+
+class CacheStatus:
+    def __init__(self, exists: bool, is_current: bool = False, 
+                 cache_date: str = None, latest_update: str = None,
+                 card_count: int = 0):
+        self.exists = exists
+        self.is_current = is_current
+        self.cache_date = cache_date
+        self.latest_update = latest_update
+        self.card_count = card_count
+
 if __name__ == "__main__":
     collector = ScryfallCollector()
     
@@ -324,7 +450,7 @@ if __name__ == "__main__":
     
     if all_standard_cards:
         # Save all Standard cards
-        output_file = collector.data_dir / "standard_cards.json"
+        output_file = collector.cache_dir / "standard_cards.json"
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(all_standard_cards, f, indent=2)
         
@@ -354,4 +480,9 @@ if __name__ == "__main__":
     # Fetch set data
     print("\nFetching set data...")
     sets = collector.fetch_set_data()
-    print(f"Downloaded {len(sets)} sets") 
+    print(f"Downloaded {len(sets)} sets")
+    
+    # Fetch all cards
+    print("Fetching all cards...")
+    all_cards = collector.fetch_all_cards()
+    print(f"Downloaded {len(all_cards)} cards") 

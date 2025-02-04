@@ -2,13 +2,19 @@ import json
 from pathlib import Path
 from typing import Dict, List, Set
 import re
+import requests
+from urllib.parse import urljoin
 
 class KeywordCollector:
     """Collects and analyzes keywords from Magic cards"""
     
+    RULES_URL = "https://magic.wizards.com/en/rules"
+    
     def __init__(self, data_dir: str = "data/raw"):
         self.data_dir = Path(data_dir)
         self.processed_dir = Path("data/processed")
+        self.rules_dir = Path("rules")
+        self.rules_dir.mkdir(parents=True, exist_ok=True)
         self.processed_dir.mkdir(parents=True, exist_ok=True)
         
     def save_json_alphabetically(self, data: Dict, file_path: Path):
@@ -124,7 +130,9 @@ class KeywordCollector:
                     }
             
         except FileNotFoundError:
-            print(f"Could not find rules file: {rules_file}")
+            print(f"Note: Rules file not found at {rules_file}")
+            print("Keywords will be collected without rules text enrichment")
+            return rules_text
         except Exception as e:
             print(f"Error processing rules file: {e}")
             
@@ -209,6 +217,42 @@ class KeywordCollector:
                 print(f"  Reminder text: {data['reminder_text']}")
             if data.get('rules_text'):
                 print(f"  Rules text: {data['rules_text'][:200]}...")
+
+    def download_rules(self) -> bool:
+        """Download the latest Comprehensive Rules TXT file"""
+        print("Downloading Comprehensive Rules...")
+        try:
+            # First get the main rules page
+            response = requests.get(self.RULES_URL)
+            response.raise_for_status()
+            
+            # Find the TXT file link
+            txt_link = None
+            if "TXT" in response.text:
+                # Extract the TXT file URL from the page
+                # This might need adjustment based on the actual HTML structure
+                txt_link = response.text.split('TXT')[0].split('href="')[-1].split('"')[0]
+            
+            if not txt_link:
+                print("Could not find rules TXT file link")
+                return False
+            
+            # Download the TXT file
+            rules_url = urljoin(self.RULES_URL, txt_link)
+            rules_response = requests.get(rules_url)
+            rules_response.raise_for_status()
+            
+            # Save the rules file
+            rules_file = self.rules_dir / "MagicCompRules.txt"
+            with open(rules_file, 'w', encoding='utf-8') as f:
+                f.write(rules_response.text)
+                
+            print(f"Rules downloaded successfully to {rules_file}")
+            return True
+            
+        except Exception as e:
+            print(f"Error downloading rules: {e}")
+            return False
 
 if __name__ == "__main__":
     collector = KeywordCollector()
