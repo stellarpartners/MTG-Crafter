@@ -5,12 +5,24 @@ import requests
 import time
 
 class BanlistCollector:
-    """Collects and manages banned/restricted card lists"""
+    """Collects ban list data from various sources"""
     
-    def __init__(self, data_dir: str = "data/raw"):
+    def __init__(self, cache_dir: str = "cache/banlists", data_dir: str = "data/banlists"):
+        # Cache directory for raw downloads
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Data directory for processed data
         self.data_dir = Path(data_dir)
-        self.processed_dir = Path("data/processed")
-        self.processed_dir.mkdir(parents=True, exist_ok=True)
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Cache files (raw data)
+        self.raw_banlists = self.cache_dir / "raw_banlists.json"
+        self.cache_metadata = self.cache_dir / "metadata.json"
+        
+        # Data files (processed data)
+        self.banlists_file = self.data_dir / "banlists.json"
+        self.metadata_file = self.data_dir / "metadata.json"
         
     def fetch_banned_cards(self) -> Dict[str, List[Dict]]:
         """Fetch banned cards for all formats from Scryfall"""

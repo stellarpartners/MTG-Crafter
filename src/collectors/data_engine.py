@@ -36,7 +36,10 @@ class DataEngine:
             data_dir=str(self.data_dir / "database")
         )
         self.database = self.scryfall.database
-        self.banlist = BanlistCollector(data_dir=str(self.cache_dir / "banlists"))
+        self.banlist = BanlistCollector(
+            cache_dir=str(self.cache_dir / "banlists"),
+            data_dir=str(self.data_dir / "banlists")
+        )
         self.themes = ThemeCollector(
             cache_dir=str(self.cache_dir / "themes"),
             data_dir=str(self.data_dir / "themes")

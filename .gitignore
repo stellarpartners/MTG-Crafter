@@ -55,7 +55,40 @@ venv/
 ENV/
 
 # Project specific
-cache/
-data/
+cache/*
+data/*
+
+# Keep folder structure
+!cache/.gitkeep
+!cache/scryfall/.gitkeep
+!cache/themes/.gitkeep
+!cache/themes/edhrec/.gitkeep
+!cache/rules/.gitkeep
+!cache/banlists/.gitkeep
+
+!data/.gitkeep
+!data/database/.gitkeep
+!data/themes/.gitkeep
+!data/themes/edhrec/.gitkeep
+!data/keywords/.gitkeep
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Project specific
 *.json
 *.txt 
