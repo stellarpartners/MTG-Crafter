@@ -24,7 +24,25 @@ class BanlistCollector:
         
         # Data files (processed data)
         self.banlists_file = self.data_dir / "banlists.json"
-        self.metadata_file = self.data_dir / "metadata.json"
+        self.metadata_file = self.cache_metadata
+        
+        self.load_metadata()
+        
+    def load_metadata(self):
+        """Load or initialize metadata tracking"""
+        if self.cache_metadata.exists():
+            with open(self.cache_metadata, 'r') as f:
+                self.metadata = json.load(f)
+        else:
+            self.metadata = {
+                'last_update': None,
+                'format_data': {}
+            }
+
+    def save_metadata(self):
+        """Save current metadata"""
+        with open(self.cache_metadata, 'w') as f:
+            json.dump(self.metadata, f, indent=2)
         
     def fetch_banned_cards(self) -> Dict[str, List[Dict]]:
         """Fetch banned cards for all formats from Scryfall"""

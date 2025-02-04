@@ -3,32 +3,48 @@ from datetime import datetime
 import requests
 import json
 from bs4 import BeautifulSoup
+from typing import Dict, List, Optional
 
 class EDHRECThemeCollector:
     """Collects theme data from EDHREC"""
     
     EDHREC_THEMES_URL = "https://edhrec.com/tags/themes"
     
-    def __init__(self, cache_dir: str = "cache/themes/edhrec", data_dir: str = "data/themes/edhrec"):
-        # Cache directory for raw downloads
+    def __init__(self, cache_dir: str = "cache/themes/edhrec"):
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # Data directory for processed data
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+        # Define cache files
+        self.themes_file = self.cache_dir / "themes_raw.json"
+        self.metadata_file = self.cache_dir / "metadata.json"
         
-        # Cache files (raw data)
-        self.raw_themes_file = self.cache_dir / "themes_raw.json"
-        self.cache_metadata_file = self.cache_dir / "metadata.json"
-        
-        # Data files (processed data)
-        self.themes_file = self.data_dir / "themes.json"
-        self.metadata_file = self.data_dir / "metadata.json"
-        
-        # Initialize data structure
+        # Initialize data
         self.themes = {}
+        self.metadata = {
+            'last_update': None
+        }
+        
         self.load_themes()
+    
+    def load_metadata(self):
+        """Load or initialize metadata tracking"""
+        if self.metadata_file.exists():
+            with open(self.metadata_file, 'r') as f:
+                self.metadata = json.load(f)
+        else:
+            self.metadata = {
+                'last_update': None,
+                'theme_count': 0,
+                'categories': {}
+            }
+    
+    def save_metadata(self):
+        """Save current metadata"""
+        self.metadata['last_update'] = datetime.now().isoformat()
+        self.metadata['theme_count'] = sum(len(themes) for themes in self.themes.values())
+        
+        with open(self.metadata_file, 'w') as f:
+            json.dump(self.metadata, f, indent=2)
     
     def load_themes(self):
         """Load or initialize themes"""
@@ -42,11 +58,7 @@ class EDHRECThemeCollector:
             json.dump(self.themes, f, indent=2)
         
         # Update metadata
-        with open(self.metadata_file, 'w') as f:
-            json.dump({
-                'last_updated': datetime.now().isoformat(),
-                'theme_count': sum(len(themes) for themes in self.themes.values())
-            }, f, indent=2)
+        self.save_metadata()
     
     def update_themes(self):
         """Update theme data"""

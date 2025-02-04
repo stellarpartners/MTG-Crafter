@@ -46,3 +46,6 @@ ENV/
 
 # Remove or comment out any lines referencing docs/rules
 # docs/rules/
+
+# New module cache
+src/search/__pycache__/

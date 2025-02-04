@@ -51,6 +51,14 @@ class CardDatabase:
         if oracle_file.exists():
             with open(oracle_file, 'r', encoding='utf-8') as f:
                 self.oracle_ids = json.load(f)
+        
+        # Load name index
+        name_index_file = self.data_dir / "name_index.json"
+        if name_index_file.exists():
+            with open(name_index_file, 'r', encoding='utf-8') as f:
+                self.name_index = json.load(f)
+        else:
+            self.name_index = {}
     
     def save_database(self):
         """Save the current database state"""
@@ -64,18 +72,7 @@ class CardDatabase:
             json.dump(self.oracle_ids, f, indent=2)
     
     def update_from_scryfall(self, raw_cards: List[Dict]):
-        """Stage 1: Initial data load from Scryfall"""
-        print("Loading raw card data...")
-        
-        # Store raw data for processing
-        self.raw_cards = raw_cards
-        print(f"Loaded {len(raw_cards):,} raw card entries")
-        
-        # Process the raw data
-        self.process_raw_data()
-
-    def process_raw_data(self):
-        """Stage 2: Process and organize raw data"""
+        """Process raw Scryfall data into our database format"""
         print("\nProcessing card data...")
         
         # Clear existing data
@@ -84,64 +81,46 @@ class CardDatabase:
         self.sets = {}
         self.oracle_ids = {}
         
-        # Track sets we encounter
-        encountered_sets = set()
+        # First pass: Process sets
+        for card in raw_cards:
+            set_code = card['set']
+            if set_code not in self.sets:
+                self.sets[set_code] = {
+                    'name': card['set_name'],
+                    'card_count': 0,
+                    'release_date': card.get('released_at'),
+                    'set_type': card.get('set_type')
+                }
         
-        # First pass: Organize unique cards and sets
-        print("Pass 1: Organizing unique cards and sets...")
-        with tqdm(total=len(self.raw_cards), desc="Processing") as pbar:
-            for card in self.raw_cards:
-                if 'name' not in card:
-                    pbar.update(1)
-                    continue
-                
-                card_name = card['name']
-                set_code = card['set']
-                
-                # Update set information
-                if set_code not in self.sets:
-                    self.sets[set_code] = {
-                        'name': card['set_name'],
-                        'code': set_code,
-                        'released_at': card.get('released_at'),
-                        'set_type': card.get('set_type'),
-                        'card_count': 0
-                    }
-                encountered_sets.add(set_code)
-                
-                # Update unique card data
-                if card_name not in self.cards:
-                    self.cards[card_name] = {
-                        'name': card_name,
-                        'oracle_text': card.get('oracle_text'),
-                        'mana_cost': card.get('mana_cost'),
-                        'cmc': card.get('cmc', 0),
-                        'color_identity': card.get('color_identity', []),
-                        'keywords': card.get('keywords', []),
-                        'type_line': card['type_line'],
-                        'power': card.get('power'),
-                        'toughness': card.get('toughness'),
-                        'legalities': card['legalities'],
-                        'printings': []  # List of scryfall_ids
-                    }
-                    self.oracle_ids[card_name.lower()] = card_name
-                
-                pbar.update(1)
-        
-        # Second pass: Process printings
-        print("\nPass 2: Processing printings...")
-        with tqdm(total=len(self.raw_cards), desc="Processing") as pbar:
-            for card in self.raw_cards:
-                if 'name' not in card:
-                    pbar.update(1)
-                    continue
-                
-                card_name = card['name']
-                scryfall_id = card['id']
-                set_code = card['set']
-                
-                # Add printing
-                if scryfall_id not in self.printings:
+        # Second pass: Process cards and printings
+        with tqdm(total=len(raw_cards), desc="Processing cards") as pbar:
+            for card in raw_cards:
+                try:
+                    # Get basic card info
+                    card_name = card['name']
+                    oracle_id = card['oracle_id']
+                    scryfall_id = card['id']
+                    set_code = card['set']
+                    
+                    # Store oracle ID mapping
+                    self.oracle_ids[card_name.lower()] = oracle_id
+                    
+                    # Process card data if we haven't seen this oracle ID
+                    if oracle_id not in self.cards:
+                        self.cards[oracle_id] = {
+                            'name': card_name,
+                            'mana_cost': card.get('mana_cost', ''),
+                            'cmc': card.get('cmc', 0),
+                            'type_line': card.get('type_line', ''),
+                            'oracle_text': card.get('oracle_text', ''),
+                            'colors': card.get('colors', []),
+                            'color_identity': card.get('color_identity', []),
+                            'keywords': card.get('keywords', []),
+                            'legalities': card.get('legalities', {}),
+                            'printings': []  # Will store all printing IDs
+                        }
+                    
+                    # Always process printing data
                     printing = {
                         'card_name': card_name,
                         'set': set_code,
@@ -152,28 +131,32 @@ class CardDatabase:
                         'prices': card.get('prices', {}),
                         'released_at': card['released_at']
                     }
+                    
+                    # Store printing and update references
                     self.printings[scryfall_id] = printing
-                    self.cards[card_name]['printings'].append(scryfall_id)
+                    self.cards[oracle_id]['printings'].append(scryfall_id)
                     self.sets[set_code]['card_count'] += 1
-                
-                pbar.update(1)
+                    
+                    pbar.update(1)
+                    
+                except Exception as e:
+                    print(f"\nError processing card: {e}")
+                    print(f"Card data: {card}")
+                    continue
         
-        # Update statistics
-        self.stats = {
-            'total_cards': len(self.raw_cards),
-            'unique_cards': len(self.cards),
-            'total_printings': len(self.printings),
-            'total_sets': len(self.sets)
-        }
+        # Sort printings by release date for each card
+        for card in self.cards.values():
+            card['printings'].sort(
+                key=lambda pid: self.printings[pid]['released_at'],
+                reverse=True  # Most recent first
+            )
+        
+        print(f"\nProcessed {len(self.cards):,} unique cards")
+        print(f"Found {len(self.printings):,} total printings")
+        print(f"Across {len(self.sets):,} sets")
         
         # Save processed data
         self.save_database()
-        
-        # Report results
-        print(f"\nProcessing complete:")
-        print(f"- {self.stats['unique_cards']:,} unique cards")
-        print(f"- {self.stats['total_printings']:,} total printings")
-        print(f"- {self.stats['total_sets']:,} sets")
     
     def get_card_by_name(self, name: str) -> Optional[Dict]:
         """Get card data by name"""
@@ -220,4 +203,75 @@ class CardDatabase:
             
         release_date = datetime.fromisoformat(set_data['released_at'].replace('Z', '+00:00'))
         age = datetime.now() - release_date
-        return age.days <= 545  # Roughly 18 months 
+        return age.days <= 545  # Roughly 18 months
+
+    def build_name_index(self):
+        """Build a comprehensive index of all card names and their printings"""
+        print("\nBuilding card name index...")
+        
+        # Initialize the name index
+        self.name_index = {}
+        
+        # First pass: Collect all unique names and their printings
+        for oracle_id, card in self.cards.items():
+            name = card['name'].lower()
+            if name not in self.name_index:
+                self.name_index[name] = {
+                    'name': card['name'],  # Preserve original capitalization
+                    'oracle_versions': {},  # Different Oracle texts over time
+                    'printings': []  # All printings regardless of Oracle text
+                }
+        
+        # Second pass: Process all printings and Oracle texts
+        for printing_id, printing in self.printings.items():
+            name = printing['card_name'].lower()
+            oracle_id = self.oracle_ids[name]
+            card = self.cards[oracle_id]
+            
+            # Add printing info
+            printing_info = {
+                'set': printing['set'],
+                'set_name': printing['set_name'],
+                'collector_number': printing['collector_number'],
+                'rarity': printing['rarity'],
+                'released_at': printing['released_at'],
+                'prices': printing['prices'],
+                'image_uris': printing['image_uris']
+            }
+            self.name_index[name]['printings'].append(printing_info)
+            
+            # Track Oracle text version
+            oracle_text = card['oracle_text']
+            if oracle_text not in self.name_index[name]['oracle_versions']:
+                self.name_index[name]['oracle_versions'][oracle_text] = {
+                    'first_printed': printing['released_at'],
+                    'mana_cost': card['mana_cost'],
+                    'type_line': card['type_line'],
+                    'oracle_text': oracle_text,
+                    'colors': card['colors'],
+                    'color_identity': card['color_identity'],
+                    'legalities': card['legalities'],
+                    'sets': []
+                }
+            self.name_index[name]['oracle_versions'][oracle_text]['sets'].append(printing['set'])
+        
+        # Sort printings by release date
+        for card_data in self.name_index.values():
+            card_data['printings'].sort(key=lambda x: x['released_at'])
+            
+            # Sort Oracle versions by first printing date
+            card_data['oracle_versions'] = dict(
+                sorted(
+                    card_data['oracle_versions'].items(),
+                    key=lambda x: x[1]['first_printed']
+                )
+            )
+        
+        print(f"Indexed {len(self.name_index)} unique card names")
+        
+        # Ensure database directory exists
+        self.data_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Save the index
+        with open(self.data_dir / "name_index.json", 'w') as f:
+            json.dump(self.name_index, f, indent=2) 

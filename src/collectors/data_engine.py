@@ -45,10 +45,13 @@ class DataEngine:
         try:
             # Initialize collectors
             self.scryfall = ScryfallCollector(
-                cache_dir=str(self.cache_dir / "scryfall"),
+                cache_dir=str(self.cache_dir / "scryfall")
+            )
+            
+            self.database = CardDatabase(
                 data_dir=str(self.data_dir / "database")
             )
-            self.database = self.scryfall.database
+            
             self.banlist = BanlistCollector(
                 cache_dir=str(self.cache_dir / "banlists"),
                 data_dir=str(self.data_dir / "banlists")
@@ -61,10 +64,9 @@ class DataEngine:
                 cache_dir=str(self.cache_dir / "rules"),
                 data_dir=str(self.data_dir / "keywords")
             )
-        except json.JSONDecodeError:
-            # If we can't load the database, it's probably because we need a fresh start
-            print("Database not found or corrupted. Please use Fresh Start to download data.")
-            return
+        except Exception as e:
+            print(f"Error initializing collectors: {e}")
+            raise
     
     def load_metadata(self):
         """Load or initialize engine metadata"""
@@ -156,80 +158,52 @@ class DataEngine:
         """Initialize all data collections in stages"""
         print("Starting MTG Crafter data engine...")
         
-        # Stage 1: Card Data
-        print("\n=== Stage 1: Card Data ===")
-        if force_download or not self._has_card_cache():
-            if not force_download:
-                print("Cache is invalid or corrupted. Forcing fresh download...")
-            print("Downloading fresh card data from Scryfall...")
-            # Initialize just the Scryfall collector for download
-            self.scryfall = ScryfallCollector(
-                cache_dir=str(self.cache_dir / "scryfall"),
-                data_dir=str(self.data_dir / "database"),
-                skip_load=True
-            )
-            cards = self.scryfall.fetch_all_cards(force_download=True)
-            
-            # Now initialize the database with the downloaded cards
-            self.database = CardDatabase(data_dir=str(self.data_dir / "database"))
-            self.database.update_from_scryfall(cards)
-            
-            # Update scryfall collector with the new database
-            self.scryfall.database = self.database
+        # Stage 1: Card Data Download
+        print("\n=== Stage 1: Card Data Download ===")
+        print("\n1. Downloading card data from Scryfall...")
+        self.scryfall = ScryfallCollector(
+            cache_dir=str(self.cache_dir / "scryfall")
+        )
+        if not self.scryfall.fetch_all_cards(force_download=force_download):
+            print("Failed to download card data!")
+            return False
         
-        # Now initialize other collectors
-        self.banlist = BanlistCollector(
-            cache_dir=str(self.cache_dir / "banlists"),
-            data_dir=str(self.data_dir / "banlists")
-        )
-        self.themes = ThemeCollector(
-            cache_dir=str(self.cache_dir / "themes"),
-            data_dir=str(self.data_dir / "themes")
-        )
-        self.keywords = KeywordCollector(
-            cache_dir=str(self.cache_dir / "rules"),
-            data_dir=str(self.data_dir / "keywords")
-        )
+        # Stage 2: Additional Data Collection
+        print("\n=== Stage 2: Additional Data Collection ===")
         
-        # Stage 2: Additional Data
-        if self.database and self.database.cards:
-            print("\n=== Stage 2: Additional Data ===")
-            
-            print("\n1. Downloading rules...")
-            try:
-                if self.keywords.download_rules():
-                    print("Rules downloaded successfully")
-                    self.metadata['last_updates']['rules'] = datetime.now().isoformat()
-                else:
-                    print("Failed to download rules")
-            except Exception as e:
-                print(f"Warning: Failed to download rules: {e}")
-            
-            print("\n2. Processing banned cards...")
-            try:
-                self.banlist.fetch_banned_cards()
+        print("\n1. Downloading banlists...")
+        try:
+            if self.banlist.fetch_banned_cards():
+                print("Banlists downloaded successfully")
                 self.metadata['last_updates']['banlists'] = datetime.now().isoformat()
-            except Exception as e:
-                print(f"Warning: Failed to fetch banned cards: {e}")
-            
-            print("\n3. Downloading and processing themes...")
-            try:
-                self.themes.update_all()
+            else:
+                print("Failed to download banlists")
+        except Exception as e:
+            print(f"Warning: Failed to download banlists: {e}")
+        
+        print("\n2. Downloading rules...")
+        try:
+            if self.keywords.download_rules():
+                print("Rules downloaded successfully")
+                self.metadata['last_updates']['rules'] = datetime.now().isoformat()
+            else:
+                print("Failed to download rules")
+        except Exception as e:
+            print(f"Warning: Failed to download rules: {e}")
+        
+        print("\n3. Downloading themes...")
+        try:
+            if self.themes.update_all():
+                print("Themes downloaded successfully")
                 self.metadata['last_updates']['themes'] = datetime.now().isoformat()
-            except Exception as e:
-                print(f"Warning: Failed to collect themes: {e}")
-            
-            print("\n4. Processing keywords...")
-            try:
-                self.keywords.collect_keywords_from_cards()
-                self.keywords.extract_ability_words()
-                self.keywords.enrich_keywords()
-                self.metadata['last_updates']['keywords'] = datetime.now().isoformat()
-            except Exception as e:
-                print(f"Warning: Failed to process keywords: {e}")
+            else:
+                print("Failed to download themes")
+        except Exception as e:
+            print(f"Warning: Failed to download themes: {e}")
         
         self.save_metadata()
         print("\nData engine initialization complete!")
+        return True
 
     def needs_update(self, collector_type: str) -> bool:
         """Check if a collector needs updating"""
@@ -249,59 +223,72 @@ class DataEngine:
     
     def show_update_menu():
         print("\nUpdate Component Cache:")
-        print("1. Redownload Card Data")
-        print("2. Redownload Rules")
-        print("3. Redownload Themes")
-        print("4. Redownload Everything")
-        print("5. Back to Main Menu")
-        return input("\nSelect an option (1-5): ")
+        print("1. Download New Sets")
+        print("2. Update Banlists")
+        print("3. Update Rules")
+        print("4. Update Themes")
+        print("5. Update Everything")
+        print("6. Back to Main Menu")
+        return input("\nSelect an option (1-6): ")
 
-    def _update_collector(self, collector_type: str):
-        """Force update a specific collector by clearing its cache first"""
-        print(f"\nUpdating {collector_type}...")
-        
-        if collector_type == 'sets':
-            # Clear Scryfall cache
-            cache_files = [
-                self.cache_dir / "scryfall/bulk_cards_cache.json",
-                self.cache_dir / "scryfall/bulk_cache_metadata.json"
-            ]
-            for file in cache_files:
-                if file.exists():
-                    print(f"Removing {file}")
-                    file.unlink()
-            self.scryfall.fetch_all_cards(force_download=True)
+    def _update_collector(self, collector_type: str, force: bool = False) -> bool:
+        """Update a specific collector if needed"""
+        try:
+            if collector_type == 'sets':
+                print("\nUpdating card data...")
+                return self.scryfall.fetch_all_cards(force_download=force)
+                
+            elif collector_type == 'banlists':
+                print("\nUpdating banlists...")
+                success = self.banlist.fetch_banned_cards()
+                if success:
+                    self.metadata['last_updates']['banlists'] = datetime.now().isoformat()
+                return success
+                
+            elif collector_type == 'themes':
+                print("\nUpdating theme data...")
+                success = self.themes.update_all()
+                if success:
+                    self.metadata['last_updates']['themes'] = datetime.now().isoformat()
+                return success
+                
+            elif collector_type == 'rules':
+                print("\nUpdating rules data...")
+                success = self.keywords.download_rules()
+                if success:
+                    self.metadata['last_updates']['rules'] = datetime.now().isoformat()
+                return success
+                
+            return False
             
-        elif collector_type == 'rules':
-            rules_file = self.cache_dir / "rules/MagicCompRules.txt"
-            if rules_file.exists():
-                print(f"Removing {rules_file}")
-                rules_file.unlink()
-            if self.keywords.download_rules():
-                print("Rules updated successfully")
-            else:
-                print("Failed to update rules")
-            return
-            
-        elif collector_type == 'themes':
-            theme_cache = self.cache_dir / "themes/edhrec/themes_raw.json"
-            if theme_cache.exists():
-                print(f"Removing {theme_cache}")
-                theme_cache.unlink()
-            self.themes.update_all()
-            
-        self.metadata['last_updates'][collector_type] = datetime.now().isoformat()
-        self.save_metadata()
-        print(f"{collector_type} update complete!")
+        except Exception as e:
+            print(f"Error updating {collector_type}: {e}")
+            return False
+
+    def _needs_update(self, collector_type: str) -> bool:
+        """Check if a collector needs updating based on metadata"""
+        try:
+            if collector_type == 'sets':
+                return self.scryfall.needs_update()
+            elif collector_type == 'themes':
+                return self.themes.needs_update()
+            elif collector_type == 'rules':
+                return self.keywords.needs_update()
+            return False
+        except Exception:
+            return True
 
     def update_if_needed(self, collector_type: str = None):
         """Update specific or all collectors"""
         if collector_type:
-            self._update_collector(collector_type)
+            success = self._update_collector(collector_type)
+            if success:
+                self.save_metadata()
         else:
             # Update everything
-            for collector in ['sets', 'rules', 'themes']:
-                self._update_collector(collector)
+            for collector in ['sets', 'banlists', 'rules', 'themes']:
+                if self._update_collector(collector):
+                    self.save_metadata()
 
 if __name__ == "__main__":
     engine = DataEngine()

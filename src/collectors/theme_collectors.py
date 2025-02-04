@@ -1,6 +1,8 @@
 """Collection of theme collectors from different sources"""
 
 from pathlib import Path
+import json
+from typing import Dict, List, Optional
 from datetime import datetime
 import sys
 from os.path import dirname, abspath
@@ -13,19 +15,19 @@ sys.path.append(root_dir)
 from src.collectors.theme_edhrec_collector import EDHRECThemeCollector
 
 class ThemeCollector:
-    """Manages all theme collectors"""
+    """Main collector for theme data from various sources"""
     
     def __init__(self, cache_dir: str = "cache/themes", data_dir: str = "data/themes"):
-        # Set up directories
         self.cache_dir = Path(cache_dir)
         self.data_dir = Path(data_dir)
+        
+        # Create directories
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         
-        # Initialize collectors with their specific directories
+        # Initialize sub-collectors
         self.edhrec = EDHRECThemeCollector(
-            cache_dir=str(self.cache_dir / "edhrec"),
-            data_dir=str(self.data_dir / "edhrec")
+            cache_dir=str(self.cache_dir / "edhrec")
         )
         # Future collectors can be added here:
         # self.mtggoldfish = ThemeMTGGoldfishCollector()
