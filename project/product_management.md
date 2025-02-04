@@ -25,6 +25,9 @@
    - ✓ Ability words identified
    - ✓ Rules text matched with keywords
    - ✓ Ban lists collected for all formats
+   - ✓ EDHREC themes collected with metadata
+   - ✓ Theme categories and colors tracked
+   - ✓ Historical theme data structure implemented
 
 3. Data Organization
    - ✓ JSON files alphabetically sorted
@@ -32,6 +35,9 @@
    - ✓ Metadata tracking implemented
    - ✓ Version control for updates
    - ✓ Ban lists in both JSON and Markdown formats
+   - ✓ Theme data with yearly snapshots
+   - ✓ Color information for themes
+   - ✓ Theme categorization
 
 ### Implementation Status
 1. Data Models
@@ -131,13 +137,14 @@
    - How to use keywords for deck recommendations?
 
 ## Recent Achievements
-1. Implemented keyword collection and analysis
-2. Added rules text matching for keywords
-3. Organized data storage with consistent sorting
-4. Improved error handling and logging
-5. Added metadata tracking for updates
-6. Implemented ban list collection and documentation
-7. Added support for all major formats' ban lists
+1. Implemented EDHREC theme collection
+2. Added theme metadata (colors, categories)
+3. Created historical theme tracking
+4. Implemented keyword collection and analysis
+5. Added rules text matching for keywords
+6. Organized data storage with consistent sorting
+7. Improved error handling and logging
+8. Added metadata tracking for updates
 
 Would you like to:
 1. Focus on any particular challenge?

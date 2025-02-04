@@ -10,6 +10,9 @@ Current:
 - ✓ Keyword and ability word analysis
 - ✓ Ban list tracking
 - ✓ Comprehensive rules integration
+- ✓ EDHREC theme tracking
+- ✓ Theme categorization and color analysis
+- ✓ Historical theme data collection
 
 Planned:
 - [ ] Deck statistics and analysis
@@ -17,6 +20,9 @@ Planned:
 - [ ] Collection management
 - [ ] Deck recommendations
 - [ ] Budget optimization
+- [ ] Theme-based deck suggestions
+- [ ] Color identity analysis
+- [ ] Theme trend analysis
 
 ## Installation
 
@@ -30,6 +36,10 @@ Planned:
    ```bash
    pip install -r requirements.txt
    ```
+3. Add Python Scripts to PATH (if you see PATH warnings):
+   - Windows: Add to PATH: `%LOCALAPPDATA%\Packages\PythonSoftwareFoundation.Python.3.12_qbz5n2kfra8p0\LocalCache\local-packages\Python312\Scripts`
+   - Linux/Mac: Usually handled automatically
+
 3. Initialize the card database:
    ```bash
    python src/collectors/scryfall.py
