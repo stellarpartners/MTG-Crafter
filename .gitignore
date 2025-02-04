@@ -1,6 +1,7 @@
 # Cache and data directories with exceptions
 cache/*
 data/*
+test_output/
 
 # Keep folder structure and specific files
 !cache/.gitkeep
@@ -36,6 +37,8 @@ __pycache__/
 env/
 venv/
 ENV/
+*.egg-info/
+mtg_crafter.egg-info/
 
 # IDE
 .vscode/
