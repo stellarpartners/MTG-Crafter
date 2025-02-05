@@ -1,5 +1,6 @@
 from src.deckbuilding import DeckSuggester
 from src.deckbuilding.training import TrainingPipeline
+from typing import Dict, List, Optional
 
 def print_header():
     print("\nMTG Deck Builder")
@@ -13,8 +14,15 @@ def show_main_menu() -> str:
     print("4. Exit")
     return input("\nSelect an option (1-4): ")
 
-def handle_setup():
-    """Run first-time setup or update models"""
+def handle_setup() -> None:
+    """Run first-time setup or update models
+    
+    Downloads required data and trains ML models.
+    Provides options for:
+    1. Fresh installation
+    2. Update existing models
+    3. Force retrain
+    """
     print("\nSetup/Update Models")
     print("===================")
     
@@ -27,65 +35,85 @@ def handle_setup():
     
     input("\nPress Enter to continue...")
 
-def handle_deck_building():
-    """Handle deck building process"""
-    suggester = DeckSuggester()
+def handle_deck_building() -> None:
+    """Handle deck building process
     
+    Presents options to:
+    1. Build around a commander
+    2. Build from colors/themes
+    3. Return to main menu
+    
+    Handles all user input and error cases.
+    """
+    try:
+        suggester = DeckSuggester()
+    except SystemExit:
+        print("\nError: Unable to initialize deck builder. Please run setup first.")
+        input("\nPress Enter to continue...")
+        return
+        
     print("\nDeck Building")
     print("=============")
     
-    # Choose build method
-    print("\nBuild Method:")
-    print("1. Build around a card")
-    print("2. Build from colors/themes")
     while True:
-        choice = input("\nSelect method (1-2): ").strip()
-        if choice in ["1", "2"]:
+        print("\nBuild Method:")
+        print("1. Build around a card")
+        print("2. Build from colors/themes")
+        print("3. Back to main menu")
+        
+        choice = input("\nSelect an option (1-3): ").strip()
+        
+        if choice == "3":
             break
-        print("Please enter 1 or 2")
-    
-    if choice == "1":
-        # Build around a card
-        while True:
-            card = input("\nEnter card name (or 'back' to return to menu): ").strip()
-            if card.lower() == 'back':
-                return
-            if not card:
-                print("Please enter a card name.")
-                continue
-            print(f"\nBuilding deck around: {card}")
-            suggestions = suggester.suggest_from_card(card)
-            break
+        elif choice not in ["1", "2"]:
+            print("\nInvalid choice")
+            continue
+            
+        try:
+            if choice == "1":
+                # Build around a card
+                while True:
+                    card = input("\nEnter card name (or 'back' to return): ").strip()
+                    if not card or card.lower() == 'back':
+                        break
+                    try:
+                        suggestions = suggester.suggest_from_card(card)
+                        if suggestions:
+                            break
+                    except ValueError as e:
+                        print(f"\nError: {str(e)}")
+                        continue
+            else:
+                # Get colors
+                print("\nAvailable colors:")
+                print("W - White")
+                print("U - Blue")
+                print("B - Black")
+                print("R - Red")
+                print("G - Green")
+                colors = input("\nEnter colors (e.g. B G for Black-Green): ").upper().split()
+                
+                # Show themes
+                available_themes = suggester.list_themes()
+                print("\nAvailable Themes:")
+                for i, theme in enumerate(available_themes, 1):
+                    print(f"{i}. {theme}")
+                
+                # Get theme choices
+                theme_nums = input("\nEnter theme numbers (space-separated): ").split()
+                theme_choices = [available_themes[int(num)-1] for num in theme_nums]
+                
+                print(f"\nBuilding {'-'.join(colors)} deck with themes: {', '.join(theme_choices)}")
+                suggestions = suggester.suggest_deck(colors, theme_choices)
+        except Exception as e:
+            print(f"\nError: {str(e)}")
+            continue
         
         # Wait for user to review suggestions
         input("\nPress Enter to see deck suggestions...")
         show_deck_suggestions(suggestions, suggester)
-    else:
-        # Get colors
-        print("\nAvailable colors:")
-        print("W - White")
-        print("U - Blue")
-        print("B - Black")
-        print("R - Red")
-        print("G - Green")
-        colors = input("\nEnter colors (e.g. B G for Black-Green): ").upper().split()
-        
-        # Show themes
-        available_themes = suggester.list_themes()
-        print("\nAvailable Themes:")
-        for i, theme in enumerate(available_themes, 1):
-            print(f"{i}. {theme}")
-        
-        # Get theme choices
-        theme_nums = input("\nEnter theme numbers (space-separated): ").split()
-        theme_choices = [available_themes[int(num)-1] for num in theme_nums]
-        
-        print(f"\nBuilding {'-'.join(colors)} deck with themes: {', '.join(theme_choices)}")
-        suggestions = suggester.suggest_deck(colors, theme_choices)
-    
-    input("\nPress Enter to continue...")
 
-def show_deck_suggestions(suggestions, suggester=None):
+def show_deck_suggestions(suggestions: Dict[str, List[Dict]], suggester: Optional[DeckSuggester] = None) -> None:
     """Display deck suggestions"""
     print("\nDeck Suggestions:")
     for category, cards in suggestions.items():
@@ -114,12 +142,20 @@ def show_deck_suggestions(suggestions, suggester=None):
                 print(f"\nSaved to: {path}")
                 print("You can find the deck in CSV, JSON, and Moxfield formats")
             except Exception as e:
-                print(f"\nError saving deck: {e}")
+                print(f"\nError saving deck: {str(e)}")
+                print("Please check file permissions and disk space")
         else:
             print("Cannot save: no suggester provided")
+            print("This can happen when viewing cached results")
 
-def handle_deck_browsing():
-    """Browse saved decks"""
+def handle_deck_browsing() -> None:
+    """Handle browsing of saved decks
+    
+    Shows list of previously built decks and allows:
+    1. Viewing deck details
+    2. Exporting to different formats
+    3. Deleting saved decks
+    """
     suggester = DeckSuggester()
     decks = suggester.list_saved_decks()
     

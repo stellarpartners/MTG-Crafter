@@ -14,12 +14,9 @@ test_output/
 !data/.gitkeep
 !data/database/.gitkeep
 !data/themes/.gitkeep
-!data/themes/edhrec/.gitkeep
-!data/keywords/.gitkeep
-!data/banlists/.gitkeep
-
-# Remove the blanket JSON ignore
-# *.json
+!data/analyzed_cards/.gitkeep
+!data/models/.gitkeep
+!data/training/.gitkeep
 
 # Only ignore specific JSON files
 cache/**/*.json

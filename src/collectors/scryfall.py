@@ -29,6 +29,10 @@ class ScryfallCollector:
         # Cache files
         self.metadata_file = self.cache_dir / "metadata.json"
         
+        self._last_request_time = 0
+        self._request_count = 0
+        self._request_window = []  # Track requests in last minute
+        
         if not skip_load:
             self.load_metadata()
     
@@ -64,12 +68,28 @@ class ScryfallCollector:
         return stored_date != new_date
     
     def _wait_for_rate_limit(self):
-        """Ensure we don't exceed rate limits"""
-        now = time.time()
-        time_since_last = now - self.last_request_time
+        """Implement proper rate limiting"""
+        current_time = time.time()
+        
+        # Clean old requests from window
+        self._request_window = [t for t in self._request_window 
+                              if current_time - t < 60]
+        
+        # If we've made too many requests recently, wait
+        if len(self._request_window) >= 60:  # Scryfall's limit is 60/minute
+            sleep_time = 60 - (current_time - self._request_window[0])
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+        
+        # Add current request to window
+        self._request_window.append(current_time)
+        
+        # Also respect per-request delay
+        time_since_last = current_time - self._last_request_time
         if time_since_last < self.REQUEST_DELAY:
             time.sleep(self.REQUEST_DELAY - time_since_last)
-        self.last_request_time = time.time()
+        
+        self._last_request_time = time.time()
     
     def _analyze_cache(self):
         """Analyze current cache state"""

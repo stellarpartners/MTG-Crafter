@@ -1,16 +1,15 @@
 from pathlib import Path
 import json
 import torch
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Set
 from collections import defaultdict
 from tqdm import tqdm
-import csv
 from datetime import datetime
 
 from .ml.semantic_analyzer import SemanticThemeAnalyzer
 from .lib.theme_network import ThemeNetwork
 from .lib.models import ColorIdentity
-from .utils.exporters import export_to_csv, export_to_moxfield
+from .utils.exporters import export_to_csv, export_to_moxfield, export_deck, ExportFormat
 from .utils.cache import CacheManager
 
 class DeckSuggester:
@@ -20,16 +19,24 @@ class DeckSuggester:
         self.analysis_dir = self.data_dir / "analyzed_cards"
         self.analysis_dir.mkdir(parents=True, exist_ok=True)
         
-        # Load data first
-        self.load_data()
-        
-        # Initialize theme network (will use cache if available)
-        self.theme_network = ThemeNetwork()
-        
-        # Only analyze if no cached data exists
-        if not self.theme_network.themes:
-            print("\nNo cached theme analysis found. Discovering themes...")
-            self.theme_network.discover_themes(self.oracle_data)
+        try:
+            # Load data first
+            self.load_data()
+            
+            # Initialize theme network (will use cache if available)
+            self.theme_network = ThemeNetwork()
+            
+            # Only analyze if no cached data exists
+            if not self.theme_network.themes:
+                print("\nNo cached theme analysis found. Discovering themes...")
+                self.theme_network.discover_themes(self.oracle_data)
+        except FileNotFoundError as e:
+            print(f"\nError: Required data files not found. Please run setup first.")
+            print(f"Missing: {e.filename}")
+            raise SystemExit(1)
+        except Exception as e:
+            print(f"\nError during initialization: {str(e)}")
+            raise SystemExit(1)
     
     def load_data(self):
         """Load cached data and models"""
@@ -60,12 +67,14 @@ class DeckSuggester:
         """Generate cache key for theme combination"""
         return "_".join(sorted(themes))
     
-    def suggest_deck(self, 
-                    colors: List[str], 
-                    themes: List[str], 
-                    max_suggestions: int = 40,
-                    force_reanalyze: bool = False) -> Dict:
-        """Suggest cards for a deck based on colors and themes"""
+    def suggest_deck(
+        self, 
+        colors: List[str], 
+        themes: List[str], 
+        commander: Optional[str] = None,
+        cache: bool = True
+    ) -> Dict[str, List[Dict]]:
+        """Suggest a deck based on colors and themes"""
         # Expand themes with related concepts
         expanded_themes = []
         for theme in themes:
@@ -100,7 +109,7 @@ class DeckSuggester:
         cache_key = self._get_cache_key(themes)
         
         # Check cache first
-        if not force_reanalyze and cache_key in self.analysis_cache:
+        if not cache and cache_key in self.analysis_cache:
             print("Using cached analysis results...")
             cached_results = self.analysis_cache[cache_key]
             return self._filter_by_colors(cached_results, colors)
@@ -122,84 +131,30 @@ class DeckSuggester:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         deck_name = f"{''.join(colors)}_{'-'.join(themes)}_{timestamp}"
         
-        # Save as JSON with full card details
-        json_file = self.analysis_dir / f"{deck_name}.json"
-        with open(json_file, 'w', encoding='utf-8') as f:
-            json.dump({
-                'colors': colors,
-                'themes': themes,
-                'timestamp': timestamp,
-                'suggestions': {
-                    category: [{
-                        'name': card_data['card']['name'],
-                        'score': card_data['score'],
-                        'mana_cost': card_data['card'].get('mana_cost', 'N/A'),
-                        'type_line': card_data['card'].get('type_line', 'N/A'),
-                        'oracle_text': card_data['card'].get('oracle_text', '')
-                    } for card_data in cards]
-                    for category, cards in suggestions.items()
-                }
-            }, f, indent=2)
+        base_path = self.analysis_dir / deck_name
+        metadata = {
+            'colors': colors,
+            'themes': themes,
+            'timestamp': timestamp,
+            'suggestions': suggestions
+        }
         
-        # Save other formats
-        csv_file = self.analysis_dir / f"{deck_name}.csv"
-        moxfield_file = self.analysis_dir / f"{deck_name}_moxfield.txt"
-        
-        self._export_to_csv(suggestions, csv_file)
-        self._export_to_moxfield(suggestions, moxfield_file)
+        # Save in all formats using the exporters
+        for format in ExportFormat:
+            export_deck(metadata, base_path, format)
         
         print(f"\nResults saved to:")
-        print(f"- Detailed JSON: {json_file}")
-        print(f"- CSV format: {csv_file}")
-        print(f"- Moxfield format: {moxfield_file}")
+        print(f"- Detailed JSON: {base_path.with_suffix('.json')}")
+        print(f"- CSV format: {base_path.with_suffix('.csv')}")
+        print(f"- Moxfield format: {base_path.with_suffix('.txt')}")
     
-    def _export_to_csv(self, suggestions: Dict, file_path: Path):
-        """Export suggestions to CSV format"""
-        with open(file_path, 'w', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow(['Category', 'Name', 'Score', 'Cost', 'Type', 'Oracle Text'])
-            
-            for category, cards in suggestions.items():
-                for card_data in cards:
-                    card = card_data['card']
-                    writer.writerow([
-                        category,
-                        card['name'],
-                        f"{card_data['score']:.2f}",
-                        card.get('mana_cost', 'N/A'),
-                        card.get('type_line', 'N/A'),
-                        card.get('oracle_text', '')
-                    ])
-    
-    def _export_to_moxfield(self, suggestions: Dict, file_path: Path):
-        """Export in Moxfield-compatible format"""
-        with open(file_path, 'w', encoding='utf-8') as f:
-            # Write commander first if exists
-            if 'commander' in suggestions and suggestions['commander']:
-                f.write("// Commander\n")
-                commander = suggestions['commander'][0]['card']
-                f.write(f"1 {commander['name']} (CMDR)\n")
-                f.write(f"// {commander.get('oracle_text', '')}\n\n")
-            
-            # Write other categories
-            for category, cards in suggestions.items():
-                if category == 'commander':
-                    continue
-                
-                f.write(f"\n// {category.title()} ({len(cards)} cards)\n")
-                for card_data in cards:
-                    card = card_data['card']
-                    f.write(f"1 {card['name']}\n")
-                    f.write(f"// {card.get('oracle_text', '')}\n")
-    
-    def load_deck_suggestion(self, file_name: str) -> Optional[Dict]:
-        """Load a previously saved deck suggestion"""
+    def load_deck_suggestion(self, file_name: str) -> Dict:
+        """Load a saved deck suggestion"""
         file_path = self.analysis_dir / file_name
         if not file_path.exists():
-            print(f"No saved deck found: {file_name}")
-            return None
+            raise FileNotFoundError(f"Deck file not found: {file_name}")
             
-        with open(file_path, 'r') as f:
+        with open(file_path, 'r', encoding='utf-8') as f:
             return json.load(f)
     
     def list_saved_decks(self) -> List[Dict]:
@@ -366,6 +321,12 @@ class DeckSuggester:
         
         self._save_deck_suggestions(suggestions, colors, themes)
         return self.analysis_dir
+
+    def list_themes(self) -> List[str]:
+        """List available themes for deck building"""
+        if not hasattr(self, 'theme_network') or not self.theme_network.themes:
+            return []
+        return sorted(self.theme_network.themes.keys())
 
 def main():
     suggester = DeckSuggester()

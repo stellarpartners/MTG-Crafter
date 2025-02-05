@@ -13,9 +13,18 @@ class SemanticThemeAnalyzer:
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"Using device: {self.device}")
         
-        # Load models and move to GPU
-        self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
-        self.embedding_model.to(self.device)
+        try:
+            # Load models and move to GPU
+            self.embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+            self.embedding_model.to(self.device)
+            
+            # Clear CUDA cache after model loading
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+        except Exception as e:
+            print(f"Error loading models: {str(e)}")
+            raise SystemExit(1)
         
         # Initialize BERT classifier with proper configuration
         self.tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
@@ -88,6 +97,13 @@ class SemanticThemeAnalyzer:
             'sacrifice': [r'sacrifice', r'sacrificed'],
             'power_matters': [r'power', r'toughness', r'\+\d+/\+\d+'],
         }
+    
+    def __del__(self):
+        """Cleanup GPU memory"""
+        if hasattr(self, 'embedding_model'):
+            self.embedding_model.cpu()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
     
     def batch_encode_texts(self, texts: List[str]) -> torch.Tensor:
         """Encode multiple texts in batches"""
