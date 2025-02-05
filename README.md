@@ -58,7 +58,7 @@ pip install -e .
 
 ### Data Collection
 ```bash
-python gather_data.py
+python 1. gather_data.py
 ```
 
 Options:
@@ -71,8 +71,9 @@ Options:
 
 ### Card Search
 ```bash
-python search_cards.py
+python 2. search_cards.py
 ```
+
 
 ## Development
 
