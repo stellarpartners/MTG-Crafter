@@ -1,13 +1,5 @@
-from pathlib import Path
-from typing import Set, List, Dict
-import json
-
-from src.search import CardSearchEngine
-from src.collectors.data_engine import DataEngine
-from src.deckbuilding.engine import DeckbuildingEngine, ColorIdentity, DeckTheme
-from src.deckbuilding.synergies import SynergyDetector
-from src.deckbuilding.embeddings import CardEmbeddings
-from src.deckbuilding.ml_synergies import SynergyModel
+from src.deckbuilding import DeckSuggester
+from src.deckbuilding.training import TrainingPipeline
 
 def print_header():
     print("\nMTG Deck Builder")
@@ -15,169 +7,167 @@ def print_header():
 
 def show_main_menu() -> str:
     print("\nMain Menu:")
-    print("1. Start New Deck")
-    print("2. Analyze Existing Deck")
-    print("3. Find Card Synergies")
-    print("4. Browse Themes")
-    print("5. Exit")
-    return input("\nSelect an option (1-5): ")
+    print("1. Build New Deck")
+    print("2. Browse Saved Decks")
+    print("3. Setup/Update Models")
+    print("4. Exit")
+    return input("\nSelect an option (1-4): ")
 
-def select_colors() -> Set[ColorIdentity]:
-    """Let user select color identity"""
-    print("\nSelect colors (space-separated):")
-    print("W - White")
-    print("U - Blue")
-    print("B - Black")
-    print("R - Red")
-    print("G - Green")
+def handle_setup():
+    """Run first-time setup or update models"""
+    print("\nSetup/Update Models")
+    print("===================")
     
-    colors = set()
-    while not colors:
-        choice = input("\nColors: ").upper().split()
-        colors = {ColorIdentity(c) for c in choice if c in "WUBRG"}
-        if not colors:
-            print("Please select at least one valid color")
+    print("\nThis will download card data and train models.")
+    if input("\nContinue? (y/N): ").lower() == 'y':
+        pipeline = TrainingPipeline()
+        force = input("Force retrain existing models? (y/N): ").lower() == 'y'
+        pipeline.run_pipeline(force_retrain=force)
+        print("\nSetup complete! You can now use the deck builder.")
     
-    return colors
+    input("\nPress Enter to continue...")
 
-def browse_themes(engine: DeckbuildingEngine):
-    """Browse available themes"""
-    print("\nTheme Categories:")
-    for i, category in enumerate(engine.theme_categories.keys(), 1):
-        print(f"{i}. {category.title()}")
+def handle_deck_building():
+    """Handle deck building process"""
+    suggester = DeckSuggester()
     
-    choice = input("\nSelect category (or Enter for all): ")
+    print("\nDeck Building")
+    print("=============")
     
-    themes = []
-    if choice.isdigit() and 1 <= int(choice) <= len(engine.theme_categories):
-        category = list(engine.theme_categories.keys())[int(choice)-1]
-        themes = engine.theme_categories[category]
-    else:
-        for category in engine.theme_categories.values():
-            themes.extend(category)
-    
-    print("\nAvailable Themes:")
-    for i, theme in enumerate(themes, 1):
-        print(f"\n{i}. {theme.name}")
-        print(f"   Colors: {', '.join(c.name for c in theme.colors)}")
-        print(f"   Description: {theme.description}")
-        print(f"   Key cards: {', '.join(theme.key_cards[:3])}...")
-    
-    return themes
-
-def analyze_synergies(engine: DeckbuildingEngine, search: CardSearchEngine):
-    """Find synergies between cards"""
-    print("\nEnter card names (blank line to finish):")
-    cards = []
-    
+    # Choose build method
+    print("\nBuild Method:")
+    print("1. Build around a card")
+    print("2. Build from colors/themes")
     while True:
-        name = input("> ").strip()
-        if not name:
+        choice = input("\nSelect method (1-2): ").strip()
+        if choice in ["1", "2"]:
             break
-            
-        card = search.find_card(name)
-        if card:
-            cards.append(card)
-            print(f"Added: {card.name}")
-        else:
-            print(f"Card not found: {name}")
+        print("Please enter 1 or 2")
     
-    if len(cards) < 2:
-        print("\nNeed at least 2 cards to analyze synergies")
+    if choice == "1":
+        # Build around a card
+        while True:
+            card = input("\nEnter card name (or 'back' to return to menu): ").strip()
+            if card.lower() == 'back':
+                return
+            if not card:
+                print("Please enter a card name.")
+                continue
+            print(f"\nBuilding deck around: {card}")
+            suggestions = suggester.suggest_from_card(card)
+            break
+        
+        # Wait for user to review suggestions
+        input("\nPress Enter to see deck suggestions...")
+        show_deck_suggestions(suggestions, suggester)
+    else:
+        # Get colors
+        print("\nAvailable colors:")
+        print("W - White")
+        print("U - Blue")
+        print("B - Black")
+        print("R - Red")
+        print("G - Green")
+        colors = input("\nEnter colors (e.g. B G for Black-Green): ").upper().split()
+        
+        # Show themes
+        available_themes = suggester.list_themes()
+        print("\nAvailable Themes:")
+        for i, theme in enumerate(available_themes, 1):
+            print(f"{i}. {theme}")
+        
+        # Get theme choices
+        theme_nums = input("\nEnter theme numbers (space-separated): ").split()
+        theme_choices = [available_themes[int(num)-1] for num in theme_nums]
+        
+        print(f"\nBuilding {'-'.join(colors)} deck with themes: {', '.join(theme_choices)}")
+        suggestions = suggester.suggest_deck(colors, theme_choices)
+    
+    input("\nPress Enter to continue...")
+
+def show_deck_suggestions(suggestions, suggester=None):
+    """Display deck suggestions"""
+    print("\nDeck Suggestions:")
+    for category, cards in suggestions.items():
+        print(f"\n{category.title()} ({len(cards)} cards):")
+        for card in cards[:5]:
+            print(f"- {card['card']['name']}")
+        if len(cards) > 5:
+            print(f"... and {len(cards)-5} more")
+    
+    # Option to view details
+    if input("\nView full card details? (y/N): ").lower() == 'y':
+        for category, cards in suggestions.items():
+            print(f"\n=== {category.title()} ===")
+            for card in cards:
+                card_data = card['card']
+                print(f"\n{card_data['name']}")
+                print(f"Cost: {card_data.get('mana_cost', 'N/A')}")
+                print(f"Type: {card_data.get('type_line', 'N/A')}")
+                print(f"{card_data.get('oracle_text', '')}")
+    
+    # Save option
+    if input("\nSave deck suggestions? (Y/n): ").lower() != 'n':
+        if suggester:
+            try:
+                path = suggester.save_suggestions(suggestions)
+                print(f"\nSaved to: {path}")
+                print("You can find the deck in CSV, JSON, and Moxfield formats")
+            except Exception as e:
+                print(f"\nError saving deck: {e}")
+        else:
+            print("Cannot save: no suggester provided")
+
+def handle_deck_browsing():
+    """Browse saved decks"""
+    suggester = DeckSuggester()
+    decks = suggester.list_saved_decks()
+    
+    print("\nSaved Decks")
+    print("===========")
+    
+    if not decks:
+        print("\nNo saved decks found")
+        input("\nPress Enter to continue...")
         return
     
-    # Use multiple synergy detection methods
-    print("\nAnalyzing synergies...")
+    print("\nAvailable Decks:")
+    for i, deck in enumerate(decks, 1):
+        print(f"\n{i}. {deck['file_name']}")
+        print(f"   Colors: {'-'.join(deck['colors'])}")
+        print(f"   Themes: {', '.join(deck['themes'])}")
     
-    # Pattern-based synergies
-    detector = SynergyDetector()
-    for i, card1 in enumerate(cards):
-        for card2 in cards[i+1:]:
-            print(f"\n=== {card1.name} + {card2.name} ===")
-            
-            # Check text-based synergies
-            synergies1 = detector.find_synergies(card1.oracle_text)
-            synergies2 = detector.find_synergies(card2.oracle_text)
-            
-            if synergies1 and synergies2:
-                print("Pattern matches:")
-                for s1 in synergies1:
-                    for s2 in synergies2:
-                        if s1['category'] == s2['category']:
-                            print(f"- {s1['category'].title()}: {s1['type']} + {s2['type']}")
+    if input("\nView a deck? (Y/n): ").lower() != 'n':
+        while True:
+            try:
+                choice = int(input("Enter deck number: "))
+                if 1 <= choice <= len(decks):
+                    deck = suggester.load_deck_suggestion(decks[choice-1]['file_name'])
+                    show_deck_suggestions(deck['suggestions'], suggester)
+                    break
+                print("Invalid deck number")
+            except ValueError:
+                print("Please enter a number")
     
-    # Embedding similarity
-    embeddings = CardEmbeddings()
-    embeddings.embed_cards([vars(c) for c in cards])
-    
-    print("\nSimilar cards by embedding:")
-    for card in cards:
-        similar = embeddings.find_similar_cards(vars(card), n=3)
-        print(f"\n{card.name} is similar to:")
-        for oracle_id, score in similar:
-            if oracle_id != card.oracle_id:
-                print(f"- {search.get_card_name(oracle_id)} ({score:.2f})")
-
-def start_new_deck():
-    """Start building a new deck"""
-    # Initialize engines
-    search = CardSearchEngine()
-    data = DataEngine()
-    engine = DeckbuildingEngine(search, data.themes)
-    
-    # Get color identity
-    colors = select_colors()
-    print(f"\nSelected colors: {', '.join(c.name for c in colors)}")
-    
-    # Show theme suggestions
-    suggestions = engine.suggest_themes(colors)
-    if suggestions:
-        print("\nSuggested Themes:")
-        for i, theme in enumerate(suggestions, 1):
-            print(f"\n{i}. {theme.name}")
-            print(f"   Description: {theme.description}")
-            print(f"   Key cards: {', '.join(theme.key_cards[:3])}...")
-        
-        choice = input("\nSelect theme number (or Enter to skip): ")
-        if choice.isdigit() and 1 <= int(choice) <= len(suggestions):
-            theme = suggestions[int(choice)-1]
-            
-            # Find synergistic cards
-            print("\nFinding synergistic cards...")
-            synergies = engine.find_synergies(theme)
-            
-            print(f"\nCards that synergize with {theme.name}:")
-            for card in synergies[:10]:  # Show top 10
-                print(f"\n- {card['card'].name}")
-                print(f"  {card['reason']}")
+    input("\nPress Enter to continue...")
 
 def main():
-    print_header()
-    
     while True:
+        print_header()
         choice = show_main_menu()
         
         if choice == "1":
-            start_new_deck()
+            handle_deck_building()
         elif choice == "2":
-            print("\nFeature coming soon!")
+            handle_deck_browsing()
         elif choice == "3":
-            search = CardSearchEngine()
-            data = DataEngine()
-            engine = DeckbuildingEngine(search, data.themes)
-            analyze_synergies(engine, search)
+            handle_setup()
         elif choice == "4":
-            search = CardSearchEngine()
-            data = DataEngine()
-            engine = DeckbuildingEngine(search, data.themes)
-            browse_themes(engine)
-        elif choice == "5":
             print("\nExiting...")
             break
         else:
             print("\nInvalid choice")
-        
-        input("\nPress Enter to continue...")
+            input("\nPress Enter to continue...")
 
 if __name__ == "__main__":
     main()
