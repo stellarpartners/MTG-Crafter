@@ -23,6 +23,10 @@ class CardSearchEngine:
         print(f"Indexed {len(self.oracle_texts)} unique cards")
         print(f"Found {sum(len(prints) for prints in self.oracle_to_prints.values())} total printings")
     
+    def get_card_name(self, oracle_id: str) -> str:
+        """Get card name from oracle ID"""
+        return self.oracle_to_name.get(oracle_id, "Unknown Card")
+    
     def search_text(self, query: str) -> List[CardResult]:
         """Search for cards containing specific text"""
         query = query.lower()
@@ -42,14 +46,14 @@ class CardSearchEngine:
         
         return sorted(results, key=lambda x: x.name)
     
-    def find_card(self, card_name: str) -> Optional[CardResult]:
+    def find_card(self, name: str) -> Optional[CardResult]:
         """Find a specific card by name"""
-        oracle_id = self.name_to_oracle.get(card_name.lower())
+        oracle_id = self.name_to_oracle.get(name.lower())
         if not oracle_id:
             return None
             
         return CardResult(
-            name=card_name,
+            name=name,
             oracle_id=oracle_id,
             oracle_text=self.oracle_texts[oracle_id],
             printings=sorted(

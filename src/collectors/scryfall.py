@@ -5,6 +5,7 @@ from datetime import datetime
 import time
 from typing import List, Dict, Optional
 from tqdm import tqdm
+from collections import defaultdict
 
 from src.database.card_database import CardDatabase
 
@@ -70,7 +71,38 @@ class ScryfallCollector:
             time.sleep(self.REQUEST_DELAY - time_since_last)
         self.last_request_time = time.time()
     
-    def fetch_all_cards(self, force_download: bool = False) -> bool:
+    def _analyze_cache(self):
+        """Analyze current cache state"""
+        print("\nAnalyzing cache:")
+        
+        # Check sets directory
+        set_files = list(self.sets_dir.glob("*.json"))
+        print(f"Found {len(set_files)} set files in cache")
+        
+        # Check metadata
+        if self.metadata_file.exists():
+            print(f"Metadata tracks {len(self.metadata['sets'])} sets")
+            
+            # Compare files vs metadata
+            file_codes = {f.stem for f in set_files}
+            meta_codes = set(self.metadata['sets'].keys())
+            
+            missing_meta = file_codes - meta_codes
+            missing_files = meta_codes - file_codes
+            
+            if missing_meta:
+                print("\nSets with files but no metadata:")
+                for code in sorted(missing_meta):
+                    print(f"- {code}")
+            
+            if missing_files:
+                print("\nSets in metadata but missing files:")
+                for code in sorted(missing_files):
+                    print(f"- {code} ({self.metadata['sets'][code]['name']})")
+        else:
+            print("No metadata file found")
+    
+    def fetch_all_cards(self, force_download: bool = False, debug: bool = False) -> bool:
         """Download cards by set with smart caching"""
         print("\nChecking card data...")
         
@@ -79,48 +111,48 @@ class ScryfallCollector:
         if not sets_data:
             return False
         
-        # Filter and sort sets
-        filtered_sets = self._filter_sets(sets_data['data'])
-        print(f"\nFound {len(filtered_sets)} relevant sets")
+        # Get list of all available sets
+        available_sets = {
+            set_data['code']: set_data 
+            for set_data in self._filter_sets(sets_data['data'])
+        }
         
-        # Compare with existing sets
-        new_sets = []
-        updated_sets = []
-        for set_data in filtered_sets:
-            set_code = set_data['code']
-            if set_code not in self.metadata['sets']:
-                new_sets.append(set_data)
-            elif self.needs_update(set_code, set_data):
-                updated_sets.append(set_data)
+        # Get list of what we have
+        cached_sets = set()
+        for set_file in self.sets_dir.glob("*.json"):
+            cached_sets.add(set_file.stem)
         
-        # Show download plan
-        if new_sets:
-            print(f"\nNew sets to download ({len(new_sets)}):")
-            for set_data in new_sets:
-                print(f"- {set_data['name']} ({set_data['code']})")
+        # Find missing sets
+        missing_sets = set(available_sets.keys()) - cached_sets
         
-        if updated_sets:
-            print(f"\nSets to update ({len(updated_sets)}):")
-            for set_data in updated_sets:
-                print(f"- {set_data['name']} ({set_data['code']})")
+        # Show status
+        print("\nCache Status:")
+        print(f"- Available sets: {len(available_sets)}")
+        print(f"- Sets in cache: {len(cached_sets)}")
+        print(f"- Missing sets: {len(missing_sets)}")
         
-        if not new_sets and not updated_sets:
-            print("\nAll sets are up to date!")
-            return True
+        if missing_sets:
+            print("\nMissing sets:")
+            for set_code in sorted(missing_sets):
+                set_data = available_sets[set_code]
+                print(f"- {set_data['name']} ({set_code}) - Released: {set_data['released_at']}")
+            
+            # Confirm download
+            if not force_download:
+                confirm = input("\nDownload missing sets? (Y/n): ")
+                if confirm.lower() == 'n':
+                    return False
+            
+            # Download only missing sets
+            success = True
+            for set_code in missing_sets:
+                if not self._fetch_set(set_code, available_sets[set_code]):
+                    success = False
+            
+            return success
         
-        # Confirm download
-        if not force_download:
-            confirm = input("\nProceed with download? (Y/n): ")
-            if confirm.lower() == 'n':
-                return False
-        
-        # Download sets
-        success = True
-        for set_data in new_sets + updated_sets:
-            if not self._fetch_set(set_data['code'], set_data):
-                success = False
-        
-        return success
+        print("\nAll sets are cached!")
+        return True
     
     def _fetch_sets_catalog(self, force: bool = False) -> Dict:
         """Get list of all sets from Scryfall"""
@@ -184,27 +216,51 @@ class ScryfallCollector:
     
     def _filter_sets(self, sets_data: List[Dict]) -> List[Dict]:
         """Filter and sort sets based on criteria"""
+        print("\nAnalyzing sets from Scryfall:")
+        print(f"Total sets from API: {len(sets_data)}")
+        
         filtered = []
+        skipped_reasons = defaultdict(list)
         
         for set_data in sets_data:
+            set_code = set_data['code']
+            set_name = set_data['name']
+            
+            # Debug print for a few sets to see what's happening
+            if len(filtered) < 3:
+                print(f"\nDebug set data for {set_name}:")
+                print(f"- digital: {set_data.get('digital', False)}")
+                print(f"- games: {set_data.get('games', [])}")
+                print(f"- set_type: {set_data.get('set_type', 'unknown')}")
+            
             # Skip digital-only sets
             if set_data.get('digital', False):
-                continue
-                
-            # Skip non-paper sets
-            if 'paper' not in set_data.get('games', []):
+                skipped_reasons['digital'].append(f"{set_name} ({set_code})")
                 continue
             
-            # Skip art series and other special sets
-            if any(x in set_data['name'].lower() for x in ['art series', 'minigame']):
+            # Skip special sets
+            if any(x in set_name.lower() for x in ['art series', 'minigame']):
+                skipped_reasons['special'].append(f"{set_name} ({set_code})")
                 continue
             
+            # Accept all non-digital sets for now
             filtered.append(set_data)
         
         # Sort by release date, newest first
-        return sorted(filtered, 
-                     key=lambda x: x.get('released_at', '0000-01-01'), 
-                     reverse=True)
+        filtered.sort(key=lambda x: x.get('released_at', '0000-01-01'), reverse=True)
+        
+        # Print filtering stats
+        print("\nFiltering results:")
+        print(f"- Total sets: {len(sets_data)}")
+        print(f"- Kept sets: {len(filtered)}")
+        print("\nSkipped sets:")
+        for reason, sets in skipped_reasons.items():
+            print(f"- {reason}: {len(sets)} sets")
+            if len(sets) < 5:  # Show examples for small groups
+                for set_name in sets:
+                    print(f"  - {set_name}")
+        
+        return filtered
 
 if __name__ == "__main__":
     collector = ScryfallCollector()
