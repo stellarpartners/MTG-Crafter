@@ -84,10 +84,6 @@ def format_simulation_results(results: Dict) -> str:
 def format_discount_analysis(discounts: Dict) -> str:
     """Format and detail discount analysis for display"""
     output = []
-    total_reduction = discounts['total_reduction']
-    output.append(f"\nTotal Potential Mana Reduction: {total_reduction['total']}")
-    output.append(f"- Fixed reductions: {total_reduction['fixed']}")
-    output.append(f"- Optimal scaling reductions: {total_reduction['optimal_scaling']}")
     
     output.append("\nMana Cost Reduction Effects:")
     output.append(f"Found {len(set(card['card_name'] for card in discounts['cards']))} cards with cost reduction:")
@@ -121,6 +117,15 @@ def format_discount_analysis(discounts: Dict) -> str:
                 output.append(f"- {card['card_name']} ({card['original_cost']} → Variable)")
                 output.append(f"  Type: {reduction_type}")
                 output.append(f"  {card['condition']}")
+    
+    # Add summary totals after the detailed breakdown
+    fixed = discounts['total_reduction']['fixed']
+    optimal_scaling = discounts['total_reduction']['optimal_scaling']
+    total = discounts['total_reduction']['total']
+    output.append(f"\nTotal Potential Mana Reduction: {total}")
+    output.append(f"- Fixed reductions: {fixed}")
+    output.append(f"- Optimal scaling reductions: {optimal_scaling}")
+    
     return "\n".join(output)
 
 def format_curve_results(results: Dict, analyzer: Manalysis) -> str:
@@ -174,8 +179,11 @@ def format_curve_results(results: Dict, analyzer: Manalysis) -> str:
         output.append(f"The average mana value of your main deck is {results['detailed']['reduced']['stats_with_lands']['average']:.2f} with lands "
                      f"and {results['detailed']['reduced']['stats_without_lands']['average']:.2f} without lands. "
                      f"The median mana value of your main deck is {int(results['detailed']['reduced']['stats_with_lands']['median'])} with lands "
-                     f"and {int(results['detailed']['reduced']['stats_without_lands']['median'])} without lands. "
-                     f"This deck's adjusted total mana value is {results['detailed']['reduced']['total_mv']}.")
+                     f"and {int(results['detailed']['reduced']['stats_without_lands']['median'])} without lands. ")
+        # Compute adjusted total dynamically as original total MV minus the computed total discount
+        discount_total = discounts['total_reduction']['total']
+        adjusted_total = results['total_mv'] - discount_total
+        output.append(f"This deck's adjusted total mana value is {adjusted_total}.")
         
         # Add adjusted curve visualization
         reduced_curve = results['detailed']['reduced']['curve']

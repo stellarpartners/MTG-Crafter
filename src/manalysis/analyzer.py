@@ -468,22 +468,35 @@ class Manalysis:
             'optimal_scaling': 0
         }
         
+        # Track processed cards to avoid counting duplicates
+        processed_cards = set()
+        
         # Single pass through discounts to categorize and total
         for card in discounts:
             card_name = card['card_name']
+            if card_name in processed_cards:
+                continue
+            processed_cards.add(card_name)
+            
             discount_type = card['discount_type']
+            quantity = card['quantity']
+            amount = card['discount_amount']
             
             # Categorize the card
             if discount_type == 'fixed':
                 card_categories['fixed'].add(card_name)
-                total_reductions['fixed'] += card['discount_amount'] * card['quantity']
+                total_reductions['fixed'] += amount * quantity
             elif discount_type == 'optimal scaling':
                 card_categories['optimal_scaling'].add(card_name)
-                total_reductions['optimal_scaling'] += card['discount_amount'] * card['quantity']
+                total_reductions['optimal_scaling'] += min(amount, 
+                    self._get_card_info(card_name).get('mana_value', 0)) * quantity
             elif discount_type == 'scaling':
                 card_categories['scaling'].add(card_name)
             else:  # conditional
                 card_categories['conditional'].add(card_name)
+        
+        # Calculate the total reduction
+        total = total_reductions['fixed'] + total_reductions['optimal_scaling']
         
         return {
             'cards': discounts,
@@ -491,7 +504,7 @@ class Manalysis:
             'total_reduction': {
                 'fixed': total_reductions['fixed'],
                 'optimal_scaling': total_reductions['optimal_scaling'],
-                'total': total_reductions['fixed'] + total_reductions['optimal_scaling']
+                'total': total
             },
             'types': {
                 'fixed': len(card_categories['fixed']),

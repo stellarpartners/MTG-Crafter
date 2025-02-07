@@ -40,10 +40,15 @@ project/
 │   ├── deckbuilding/         # Core deck building logic
 │   │   ├── lib/              # Core libraries: theme detection, data models
 │   │   ├── ml/               # Machine learning components: semantic analysis, embeddings
-│   │   └── deck_suggester.py # Main deck suggestion engine (uses unified exporters)
-│   ├── collectors/           # Data collection interfaces (Scryfall, themes, etc.)
-│   ├── database/             # Card database processing and management
-│   └── utils/                # Utility functions (exporters, cache management)
+│   │   └── deck_suggester.py # Main deck suggestion engine
+│   ├── manalysis/           # Mana analysis components
+│   │   ├── analyzer.py      # Core analysis logic
+│   │   ├── cli.py          # Command-line interface
+│   │   ├── deck_loader.py  # Deck import functionality
+│   │   └── models.py       # Mana-related data models
+│   ├── collectors/          # Data collection interfaces (Scryfall, themes, etc.)
+│   ├── database/            # Card database processing and management
+│   └── utils/               # Utility functions (exporters, cache management)
 ├── data/                    # Processed data and analyzed decks (e.g., analyzed_cards)
 ├── cache/                   # Cached API responses and processed data
 ├── rules/                   # Game rules and banlists

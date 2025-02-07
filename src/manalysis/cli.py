@@ -12,6 +12,9 @@ def main():
     
     # TODO: Initialize card_db
     card_db = None  # Placeholder until we implement the card database
+    if card_db is None:
+         print("Error: Card database not initialized. Please run 'python3 1.gather_data.py' to create the database.")
+         return
     
     # Load deck from Moxfield
     loader = MoxfieldLoader(card_db)

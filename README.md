@@ -15,9 +15,9 @@ An AI-powered Magic: The Gathering deck building assistant that uses semantic an
 ### AI-Powered Analysis
 - Semantic theme detection using BERT and Sentence Transformers
 - Mechanical pattern recognition
-- Synergy scoring
-- Card categorization based on role and function
+- Synergy scoring and card categorization based on role and function
 - Theme relationship mapping
+- Advanced mana analysis and cost reduction calculations
 
 ### Data Collection and Management
 - Intelligent card data collection from Scryfall API
@@ -37,21 +37,26 @@ An AI-powered Magic: The Gathering deck building assistant that uses semantic an
 ```
 project/
 ├── src/
-│ ├── deckbuilding/ # Core deck building logic
-│ │ ├── lib/ # Core libraries
+│ ├── deckbuilding/         # Core deck building logic
+│ │ ├── lib/               # Core libraries
 │ │ │ ├── theme_learner.py # Theme detection
-│ │ │ └── models.py # Data models
-│ │ ├── ml/ # Machine learning components
+│ │ │ └── models.py       # Data models
+│ │ ├── ml/               # Machine learning components
 │ │ │ ├── semantic_analyzer.py # Semantic analysis
-│ │ │ └── embeddings.py # Text embeddings
+│ │ │ └── embeddings.py   # Text embeddings
 │ │ └── deck_suggester.py # Main suggestion engine
-│ ├── collectors/ # Data collection
-│ │ ├── data_engine.py # Centralized data management
-│ │ ├── scryfall.py # Scryfall API interface
-│ │ └── theme_.py # Theme collectors
-│ ├── database/ # Database management
+│ ├── manalysis/          # Mana analysis components
+│ │ ├── analyzer.py       # Core analysis logic
+│ │ ├── cli.py           # Command-line interface
+│ │ ├── deck_loader.py   # Deck import functionality
+│ │ └── models.py        # Mana-related data models
+│ ├── collectors/         # Data collection
+│ │ ├── data_engine.py   # Centralized data management
+│ │ ├── scryfall.py      # Scryfall API interface
+│ │ └── theme.py         # Theme collectors
+│ ├── database/          # Database management
 │ │ └── card_database.py # Card data processing
-│ └── utils/ # Utility functions
+│ └── utils/             # Utility functions
 │
 ├── data/ # Processed data
 │ ├── analyzed_cards/ # Generated deck suggestions
