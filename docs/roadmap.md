@@ -3,7 +3,7 @@
 ## Current Focus (Q1 2024)
 
 ### AI Improvements
-- [ ] Enhanced theme detection
+  - [ ] Enhanced theme detection
   - [ ] Better keyword relationship mapping
   - [ ] Improved synergy detection
   - [ ] Pattern learning from popular decks

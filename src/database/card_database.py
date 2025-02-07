@@ -1,277 +1,196 @@
+import sqlite3
 from pathlib import Path
-from typing import Dict, List, Set, Optional
 import json
+import hashlib
+from typing import Dict, Optional, List
 from datetime import datetime
-from tqdm import tqdm
 
 class CardDatabase:
-    """Internal database of all Magic cards and their printings"""
+    """SQLite database for card information"""
     
-    def __init__(self, data_dir: str = "data/database"):
-        """Initialize the card database"""
-        self.data_dir = Path(data_dir)
-        self.data_dir.mkdir(parents=True, exist_ok=True)
-        
-        # Initialize empty collections
-        self.cards = {}
-        self.printings = {}
-        self.sets = {}
-        self.oracle_ids = {}
-        
-        # Try to load existing database
-        try:
-            self.load_database()
-        except (FileNotFoundError, json.JSONDecodeError):
-            # If database doesn't exist or is corrupted, start with empty collections
-            print("Starting with fresh database...")
-            pass
-    
-    def load_database(self):
-        """Load card data from files"""
-        # Load printings
-        printings_file = self.data_dir / "printings.json"
-        if printings_file.exists():
-            with open(printings_file, 'r', encoding='utf-8') as f:
-                self.printings = json.load(f)
-        
-        # Load cards
-        cards_file = self.data_dir / "cards.json"
-        if cards_file.exists():
-            with open(cards_file, 'r', encoding='utf-8') as f:
-                self.cards = json.load(f)
-        
-        # Load sets
-        sets_file = self.data_dir / "sets.json"
-        if sets_file.exists():
-            with open(sets_file, 'r', encoding='utf-8') as f:
-                self.sets = json.load(f)
-        
-        # Load oracle IDs
-        oracle_file = self.data_dir / "oracle_ids.json"
-        if oracle_file.exists():
-            with open(oracle_file, 'r', encoding='utf-8') as f:
-                self.oracle_ids = json.load(f)
-        
-        # Load name index
-        name_index_file = self.data_dir / "name_index.json"
-        if name_index_file.exists():
-            with open(name_index_file, 'r', encoding='utf-8') as f:
-                self.name_index = json.load(f)
+    def __init__(self, db_path: str = None):
+        if db_path is None:
+            # Use data directory for processed/compiled data
+            db_path = Path("data/cards.db")
         else:
-            self.name_index = {}
-    
-    def save_database(self):
-        """Save the current database state"""
-        with open(self.data_dir / "cards.json", 'w') as f:
-            json.dump(self.cards, f, indent=2)
-        with open(self.data_dir / "printings.json", 'w') as f:
-            json.dump(self.printings, f, indent=2)
-        with open(self.data_dir / "sets.json", 'w') as f:
-            json.dump(self.sets, f, indent=2)
-        with open(self.data_dir / "oracle_ids.json", 'w') as f:
-            json.dump(self.oracle_ids, f, indent=2)
-    
-    def update_from_scryfall(self, raw_cards: List[Dict]):
-        """Process raw Scryfall data into our database format"""
-        print("\nProcessing card data...")
-        
-        # Clear existing data
-        self.cards = {}
-        self.printings = {}
-        self.sets = {}
-        self.oracle_ids = {}
-        
-        # First pass: Process sets
-        for card in raw_cards:
-            set_code = card['set']
-            if set_code not in self.sets:
-                self.sets[set_code] = {
-                    'name': card['set_name'],
-                    'card_count': 0,
-                    'release_date': card.get('released_at'),
-                    'set_type': card.get('set_type')
-                }
-        
-        # Second pass: Process cards and printings
-        with tqdm(total=len(raw_cards), desc="Processing cards") as pbar:
-            for card in raw_cards:
-                try:
-                    # Get basic card info
-                    card_name = card['name']
-                    oracle_id = card['oracle_id']
-                    scryfall_id = card['id']
-                    set_code = card['set']
-                    
-                    # Store oracle ID mapping
-                    self.oracle_ids[card_name.lower()] = oracle_id
-                    
-                    # Process card data if we haven't seen this oracle ID
-                    if oracle_id not in self.cards:
-                        self.cards[oracle_id] = {
-                            'name': card_name,
-                            'mana_cost': card.get('mana_cost', ''),
-                            'cmc': card.get('cmc', 0),
-                            'type_line': card.get('type_line', ''),
-                            'oracle_text': card.get('oracle_text', ''),
-                            'colors': card.get('colors', []),
-                            'color_identity': card.get('color_identity', []),
-                            'keywords': card.get('keywords', []),
-                            'legalities': card.get('legalities', {}),
-                            'printings': []  # Will store all printing IDs
-                        }
-                    
-                    # Always process printing data
-                    printing = {
-                        'card_name': card_name,
-                        'set': set_code,
-                        'set_name': card['set_name'],
-                        'collector_number': card['collector_number'],
-                        'rarity': card['rarity'],
-                        'image_uris': card.get('image_uris', {}),
-                        'prices': card.get('prices', {}),
-                        'released_at': card['released_at']
-                    }
-                    
-                    # Store printing and update references
-                    self.printings[scryfall_id] = printing
-                    self.cards[oracle_id]['printings'].append(scryfall_id)
-                    self.sets[set_code]['card_count'] += 1
-                    
-                    pbar.update(1)
-                    
-                except Exception as e:
-                    print(f"\nError processing card: {e}")
-                    print(f"Card data: {card}")
-                    continue
-        
-        # Sort printings by release date for each card
-        for card in self.cards.values():
-            card['printings'].sort(
-                key=lambda pid: self.printings[pid]['released_at'],
-                reverse=True  # Most recent first
-            )
-        
-        print(f"\nProcessed {len(self.cards):,} unique cards")
-        print(f"Found {len(self.printings):,} total printings")
-        print(f"Across {len(self.sets):,} sets")
-        
-        # Save processed data
-        self.save_database()
-    
-    def get_card_by_name(self, name: str) -> Optional[Dict]:
-        """Get card data by name"""
-        oracle_id = self.oracle_ids.get(name.lower())
-        if oracle_id:
-            return self.cards[oracle_id]
-        return None
-    
-    def get_printings(self, oracle_id: str) -> List[Dict]:
-        """Get all printings of a card"""
-        if oracle_id in self.cards:
-            return [
-                self.printings[printing_id] 
-                for printing_id in self.cards[oracle_id]['printings']
-            ]
-        return []
-    
-    def get_legal_printings(self, oracle_id: str, format_name: str) -> List[Dict]:
-        """Get legal printings of a card in a specific format"""
-        if oracle_id not in self.cards:
-            return []
+            db_path = Path(db_path)
             
-        card = self.cards[oracle_id]
-        if card['legalities'].get(format_name) not in ['legal', 'restricted']:
-            return []
-            
-        printings = self.get_printings(oracle_id)
+        self.db_path = db_path
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
         
-        if format_name == 'standard':
-            # For Standard, only return printings from Standard-legal sets
-            standard_sets = {
-                code for code, data in self.sets.items()
-                if data.get('set_type') in ['expansion', 'core']
-                and self._is_set_in_standard(data)
-            }
-            return [p for p in printings if p['set'] in standard_sets]
-            
-        return printings
-    
-    def _is_set_in_standard(self, set_data: Dict) -> bool:
-        """Check if a set is currently in Standard"""
-        if not set_data.get('released_at'):
-            return False
-            
-        release_date = datetime.fromisoformat(set_data['released_at'].replace('Z', '+00:00'))
-        age = datetime.now() - release_date
-        return age.days <= 545  # Roughly 18 months
-
-    def build_name_index(self):
-        """Build a comprehensive index of all card names and their printings"""
-        print("\nBuilding card name index...")
+        # Initialize database
+        self.conn = sqlite3.connect(self.db_path)
+        self.conn.row_factory = sqlite3.Row
+        self.create_tables()
         
-        # Initialize the name index
-        self.name_index = {}
-        
-        # First pass: Collect all unique names and their printings
-        for oracle_id, card in self.cards.items():
-            name = card['name'].lower()
-            if name not in self.name_index:
-                self.name_index[name] = {
-                    'name': card['name'],  # Preserve original capitalization
-                    'oracle_versions': {},  # Different Oracle texts over time
-                    'printings': []  # All printings regardless of Oracle text
-                }
-        
-        # Second pass: Process all printings and Oracle texts
-        for printing_id, printing in self.printings.items():
-            name = printing['card_name'].lower()
-            oracle_id = self.oracle_ids[name]
-            card = self.cards[oracle_id]
-            
-            # Add printing info
-            printing_info = {
-                'set': printing['set'],
-                'set_name': printing['set_name'],
-                'collector_number': printing['collector_number'],
-                'rarity': printing['rarity'],
-                'released_at': printing['released_at'],
-                'prices': printing['prices'],
-                'image_uris': printing['image_uris']
-            }
-            self.name_index[name]['printings'].append(printing_info)
-            
-            # Track Oracle text version
-            oracle_text = card['oracle_text']
-            if oracle_text not in self.name_index[name]['oracle_versions']:
-                self.name_index[name]['oracle_versions'][oracle_text] = {
-                    'first_printed': printing['released_at'],
-                    'mana_cost': card['mana_cost'],
-                    'type_line': card['type_line'],
-                    'oracle_text': oracle_text,
-                    'colors': card['colors'],
-                    'color_identity': card['color_identity'],
-                    'legalities': card['legalities'],
-                    'sets': []
-                }
-            self.name_index[name]['oracle_versions'][oracle_text]['sets'].append(printing['set'])
-        
-        # Sort printings by release date
-        for card_data in self.name_index.values():
-            card_data['printings'].sort(key=lambda x: x['released_at'])
-            
-            # Sort Oracle versions by first printing date
-            card_data['oracle_versions'] = dict(
-                sorted(
-                    card_data['oracle_versions'].items(),
-                    key=lambda x: x[1]['first_printed']
+    def create_tables(self):
+        """Create necessary database tables if they don't exist"""
+        with self.conn:
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS cards (
+                    name TEXT PRIMARY KEY,
+                    mana_cost TEXT,
+                    cmc INTEGER,
+                    type_line TEXT,
+                    oracle_text TEXT,
+                    color_identity TEXT,
+                    is_land BOOLEAN,
+                    produces_mana TEXT,
+                    layout TEXT
                 )
+            """)
+            
+            # Version tracking table
+            self.conn.execute("""
+                CREATE TABLE IF NOT EXISTS version_info (
+                    key TEXT PRIMARY KEY,
+                    value TEXT
+                )
+            """)
+    
+    def _compute_cache_hash(self, cache_dir: Path) -> str:
+        """Compute a hash of all set files in cache to track changes"""
+        hasher = hashlib.sha256()
+        sets_dir = cache_dir / "scryfall/sets"
+        
+        if not sets_dir.exists():
+            return ""
+            
+        # Hash the metadata of all set files
+        for set_file in sorted(sets_dir.glob("*.json")):
+            stat = set_file.stat()
+            # Include filename, size and modification time in hash
+            file_info = f"{set_file.name}:{stat.st_size}:{stat.st_mtime}"
+            hasher.update(file_info.encode())
+            
+        return hasher.hexdigest()
+    
+    def needs_update(self, cache_dir: Path) -> bool:
+        """Check if database needs to be updated based on cache state"""
+        current_hash = self._compute_cache_hash(cache_dir)
+        if not current_hash:
+            return True
+            
+        cursor = self.conn.execute(
+            "SELECT value FROM version_info WHERE key = 'cache_hash'"
+        )
+        stored_hash = cursor.fetchone()
+        
+        return not stored_hash or stored_hash[0] != current_hash
+    
+    def load_from_cache(self, cache_dir: Path):
+        """Load card data from Scryfall cache if needed"""
+        if not self.needs_update(cache_dir):
+            print("Database is up to date with cache")
+            return
+            
+        print("Loading cards from cache...")
+        sets_dir = cache_dir / "scryfall/sets"
+        
+        if not sets_dir.exists():
+            raise FileNotFoundError(f"Cache directory not found: {sets_dir}")
+        
+        # Start a transaction for faster inserts
+        with self.conn:
+            # Clear existing data
+            self.conn.execute("DELETE FROM cards")
+            
+            # Process each set file
+            for set_file in sets_dir.glob("*.json"):
+                try:
+                    with open(set_file, 'r', encoding='utf-8') as f:
+                        cards = json.load(f)
+                        
+                    for card in cards:
+                        # Skip non-primary card faces for double-faced cards
+                        if card.get('layout') in ['transform', 'modal_dfc'] and not card.get('is_front', True):
+                            continue
+                            
+                        # Extract mana production from oracle text
+                        produces_mana = self._extract_mana_production(card)
+                        
+                        self.conn.execute("""
+                            INSERT OR REPLACE INTO cards (
+                                name, mana_cost, cmc, type_line, oracle_text,
+                                color_identity, is_land, produces_mana, layout
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            card['name'],
+                            card.get('mana_cost'),
+                            card.get('cmc', 0),
+                            card.get('type_line', ''),
+                            card.get('oracle_text', ''),
+                            ','.join(card.get('color_identity', [])),
+                            'Land' in card.get('type_line', ''),
+                            ','.join(produces_mana),
+                            card.get('layout', 'normal')
+                        ))
+                        
+                except Exception as e:
+                    print(f"Error processing {set_file}: {e}")
+            
+            # Update version info
+            cache_hash = self._compute_cache_hash(cache_dir)
+            self.conn.execute(
+                "INSERT OR REPLACE INTO version_info (key, value) VALUES (?, ?)",
+                ("cache_hash", cache_hash)
             )
+            self.conn.execute(
+                "INSERT OR REPLACE INTO version_info (key, value) VALUES (?, ?)",
+                ("last_update", datetime.now().isoformat())
+            )
+    
+    def _extract_mana_production(self, card: Dict) -> List[str]:
+        """Extract what colors of mana this card can produce"""
+        produces_mana = set()
         
-        print(f"Indexed {len(self.name_index)} unique card names")
+        # Check if it's a basic land
+        type_line = card.get('type_line', '').lower()
+        if 'basic land' in type_line:
+            if 'plains' in type_line: produces_mana.add('W')
+            if 'island' in type_line: produces_mana.add('U')
+            if 'swamp' in type_line: produces_mana.add('B')
+            if 'mountain' in type_line: produces_mana.add('R')
+            if 'forest' in type_line: produces_mana.add('G')
         
-        # Ensure database directory exists
-        self.data_dir.mkdir(parents=True, exist_ok=True)
+        # Check produced_mana field
+        if 'produced_mana' in card:
+            produces_mana.update(card['produced_mana'])
         
-        # Save the index
-        with open(self.data_dir / "name_index.json", 'w') as f:
-            json.dump(self.name_index, f, indent=2) 
+        return sorted(list(produces_mana))
+    
+    def get_card(self, card_name: str) -> Dict:
+        """Get card data from database"""
+        try:
+            query = """
+                SELECT name, type_line, oracle_text, cmc, color_identity, 
+                       mana_cost, produces_mana, is_land
+                FROM cards 
+                WHERE name = ?
+            """
+            self.conn.execute(query, (card_name,))
+            result = self.conn.execute(query, (card_name,)).fetchone()
+            
+            if result:
+                # Debug output
+                print(f"\nDebug: Database Retrieval - {card_name}")
+                print(f"  Type Line from DB: {result['type_line']}")
+                print(f"  Is Land flag: {result['is_land']}")
+                
+            return result
+            
+        except Exception as e:
+            print(f"Error retrieving card {card_name}: {str(e)}")
+            return None
+    
+    def search_cards(self, query: str) -> List[sqlite3.Row]:
+        """Search cards by name pattern"""
+        cursor = self.conn.execute(
+            "SELECT * FROM cards WHERE name LIKE ?",
+            (f"%{query}%",)
+        )
+        return cursor.fetchall()
+    
+    def close(self):
+        """Close database connection"""
+        self.conn.close() 

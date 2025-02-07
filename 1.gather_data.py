@@ -19,8 +19,9 @@ def show_main_menu():
     print("4. Rebuild from Cache (Delete processed data & recompile)")
     print("5. Cache Maintenance")
     print("6. View Card Data")
-    print("7. Exit")
-    return input("\nSelect an option (1-7): ")
+    print("7. Build SQLite Database")
+    print("8. Exit")
+    return input("\nSelect an option (1-8): ")
 
 def show_update_menu():
     print("\nUpdate Component Cache:")
@@ -287,6 +288,35 @@ def view_card_data(engine: DataEngine):
             print(f"\nCard '{name}' not found in cache")
             print("Note: For full search functionality, use 2.search_cards.py")
 
+def build_sqlite_database(engine: DataEngine):
+    """Build SQLite database from cache"""
+    print("\nChecking database status...")
+    
+    # Initialize database
+    from src.database.card_database import CardDatabase
+    db = CardDatabase()
+    
+    try:
+        if not db.needs_update(engine.cache_dir):
+            print("\nDatabase is already up to date!")
+            cursor = db.conn.execute("SELECT value FROM version_info WHERE key = 'last_update'")
+            last_update = cursor.fetchone()[0]
+            print(f"Last updated: {last_update}")
+            return
+        
+        # Load cards from cache
+        db.load_from_cache(engine.cache_dir)
+        
+        # Get count of cards in database
+        cursor = db.conn.execute("SELECT COUNT(*) FROM cards")
+        count = cursor.fetchone()[0]
+        print(f"\nSuccessfully loaded {count} unique cards into database!")
+        
+    except Exception as e:
+        print(f"\nError building database: {e}")
+    finally:
+        db.close()
+
 def main():
     print_header()
     
@@ -359,7 +389,12 @@ def main():
             view_card_data(engine)
             input("\nPress Enter to continue...")
             
-        elif choice == "7":  # Exit
+        elif choice == "7":  # Build SQLite Database
+            engine = DataEngine(light_init=True)
+            build_sqlite_database(engine)
+            input("\nPress Enter to continue...")
+            
+        elif choice == "8":  # Exit
             print("\nExiting...")
             break
             

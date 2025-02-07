@@ -92,26 +92,20 @@ pip install -r requirements.txt
 python 3.build_deck.py
 ```
 
-The deck builder offers several options:
+The deck builder offers several options, and now includes a new **Mana Analysis** feature.
 
-1. **Build around a card**
-   - Enter any legendary creature name
-   - AI analyzes the card's themes and mechanics
-   - Get categorized card suggestions based on:
-     - Commander's colors
-     - Mechanical themes (e.g., sacrifice, counters)
-     - Semantic relationships
-     - Synergy patterns
+**Mana Analysis:**  
+  Manalysis is a command‑line tool that provides detailed analysis of your deck's mana curve, cost reduction potential, and opening hand simulations.
+  
+  Before using Manalysis, ensure that you have built the card database by running:
 
-2. **Build from colors/themes**
-   - Choose your color combination
-   - Select from available themes
-   - Get suggestions that match both colors and themes
+      python3 1.gather_data.py
 
-3. **Setup/Update Models**
-   - Download card data
-   - Train theme classifier
-   - Update semantic models
+  Once the database is ready, launch the analysis tool with:
+
+      python3 5.manalysis.py
+
+  The tool will then allow you to load a deck from the clipboard and explore various analysis options such as mana curve visualization, land simulations, casting probabilities, and color balance recommendations.
 
 ### Data Collection
 ```bash
