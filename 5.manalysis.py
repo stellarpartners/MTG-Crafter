@@ -306,7 +306,7 @@ def main():
     while True:
         print("\nOptions:")
         print("1. Load saved deck")
-        print("2. Load and analyze deck from clipboard")
+        print("2. Save new deck from clipboard")
         print("3. List saved decks")
         print("4. Update saved deck")
         print("0. Exit")
