@@ -159,28 +159,33 @@ class CardDatabase:
         
         return sorted(list(produces_mana))
     
-    def get_card(self, card_name: str) -> Dict:
-        """Get card data from database"""
+    def get_card(self, card_name: str) -> Optional[Dict]:
+        """Get card information from database"""
         try:
-            query = """
-                SELECT name, type_line, oracle_text, cmc, color_identity, 
-                       mana_cost, produces_mana, is_land
-                FROM cards 
-                WHERE name = ?
-            """
-            self.conn.execute(query, (card_name,))
-            result = self.conn.execute(query, (card_name,)).fetchone()
-            
-            if result:
-                # Debug output
-                print(f"\nDebug: Database Retrieval - {card_name}")
-                print(f"  Type Line from DB: {result['type_line']}")
-                print(f"  Is Land flag: {result['is_land']}")
+            with self.conn as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    SELECT name, cmc, type_line, oracle_text, color_identity, 
+                           mana_cost, produces_mana, is_land
+                    FROM cards 
+                    WHERE name = ?
+                """, (card_name,))
+                row = cursor.fetchone()
                 
-            return result
-            
+                if row:
+                    return {
+                        'name': row[0],
+                        'cmc': row[1],
+                        'type_line': row[2],
+                        'oracle_text': row[3],
+                        'color_identity': row[4],
+                        'mana_cost': row[5],
+                        'produces_mana': row[6],
+                        'is_land': bool(row[7])
+                    }
+                return None
+                
         except Exception as e:
-            print(f"Error retrieving card {card_name}: {str(e)}")
             return None
     
     def search_cards(self, query: str) -> List[sqlite3.Row]:

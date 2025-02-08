@@ -1,10 +1,11 @@
 import argparse
-from .deck_loader import MoxfieldLoader
+from .deck_loader import DeckLoader
 from .analyzer import Manalysis
 
 def main():
     parser = argparse.ArgumentParser(description='Manalysis - MTG deck mana analysis tool')
-    parser.add_argument('deck_url', help='URL of the Moxfield deck to analyze')
+    parser.add_argument('--clipboard', action='store_true',
+                       help='Load deck from clipboard')
     parser.add_argument('--simulations', type=int, default=1000,
                        help='Number of simulations to run (default: 1000)')
     
@@ -16,9 +17,17 @@ def main():
          print("Error: Card database not initialized. Please run 'python3 1.gather_data.py' to create the database.")
          return
     
-    # Load deck from Moxfield
-    loader = MoxfieldLoader(card_db)
-    decklist = loader.load_from_url(args.deck_url)
+    # Load deck
+    loader = DeckLoader(card_db)
+    if args.clipboard:
+        decklist = loader.load_from_clipboard()
+    else:
+        print("Please specify --clipboard to load a deck")
+        return
+    
+    if not decklist:
+        print("No deck loaded. Please check your input.")
+        return
     
     # Run analysis
     analyzer = Manalysis(decklist, card_db)
