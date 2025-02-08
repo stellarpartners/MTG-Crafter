@@ -8,14 +8,13 @@ from datetime import datetime
 class CardDatabase:
     """SQLite database for card information"""
     
-    def __init__(self, db_path: str = None):
-        if db_path is None:
-            # Use data directory for processed/compiled data
-            db_path = Path("data/cards.db")
-        else:
-            db_path = Path(db_path)
-            
-        self.db_path = db_path
+    def __init__(self, data_dir: str):
+        self.data_dir = Path(data_dir)
+        
+        # Set the database path
+        self.db_path = self.data_dir / "cards.db"  # Ensure this path is correct
+        
+        # Create the parent directory if it doesn't exist
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         
         # Initialize database

@@ -124,6 +124,7 @@ def rebuild_data(engine: DataEngine):
     
     print("\nRecompiling from cache...")
     engine.cold_start(force_download=False)
+    engine.database = CardDatabase()  # Removed data_dir argument
     print("Data rebuild complete!")
 
 def print_cache_status(engine: DataEngine):
@@ -330,25 +331,39 @@ def main():
             
         elif choice == "2":  # Fresh Start
             print("\nStarting fresh download of all data...")
-            engine = DataEngine()
-            
-            # First download all sets
-            print("\n1. Downloading card data...")
-            if not engine.scryfall.fetch_all_cards(force_download=True):
-                print("Failed to download card data!")
-                input("\nPress Enter to continue...")
-                continue
-            
-            # Then download additional data
-            print("\n2. Downloading banlists...")
-            engine.banlist.fetch_banned_cards()
-            
-            print("\n3. Downloading rules...")
-            engine.keywords.download_rules()
-            
-            print("\n4. Downloading themes...")
-            engine.themes.update_all()
-            
+            try:
+                # Initialize with light_init first to ensure directories are created
+                engine = DataEngine(light_init=True)
+                
+                # Create necessary directories if they don't exist
+                (engine.cache_dir / "scryfall/sets").mkdir(parents=True, exist_ok=True)
+                (engine.cache_dir / "banlists").mkdir(parents=True, exist_ok=True)
+                (engine.cache_dir / "rules").mkdir(parents=True, exist_ok=True)
+                (engine.cache_dir / "themes/edhrec").mkdir(parents=True, exist_ok=True)
+                
+                # Now reinitialize for full operation
+                engine = DataEngine()
+                
+                # Then proceed with downloads
+                print("\n1. Downloading card data...")
+                if not engine.scryfall.fetch_all_cards(force_download=True):
+                    print("Failed to download card data!")
+                    input("\nPress Enter to continue...")
+                    continue
+                
+                # Rest of the download operations...
+                print("\n2. Downloading banlists...")
+                engine.banlist.fetch_banned_cards()
+                
+                print("\n3. Downloading rules...")
+                engine.keywords.download_rules()
+                
+                print("\n4. Downloading themes...")
+                engine.themes.update_all()
+                
+            except Exception as e:
+                print(f"\nError during fresh start: {e}")
+                
             input("\nPress Enter to continue...")
             
         elif choice == "3":  # Update Individual Component Cache
