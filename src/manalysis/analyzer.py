@@ -1,18 +1,21 @@
 from dataclasses import dataclass
-from typing import List, Dict
+from typing import List, Dict, Set
 import random
 from collections import defaultdict
 import re
 
 @dataclass
+class GameState:
+    """Tracks the current game state during simulation"""
+    hand: List[str]
+    lands_in_play: List[str]
+    mana_rocks_in_play: List[str]
+    cards_in_play: Set[str]
+    mana_available: Dict[str, int]
+    lands_in_hand: List[str]
+
 class Manalysis:
     """Class for analyzing mana distribution and running simulations"""
-    decklist: Dict[str, int]  # Card name to quantity mapping
-    lands: List[str]  # List of land cards
-    mana_sources: Dict[str, List[str]]  # Mapping of mana colors to source cards
-    card_db: any  # Card database reference
-    commander: str = None
-    
     def __init__(self, decklist: Dict[str, int], card_db):
         """
         Initialize analyzer with decklist and card database
@@ -27,138 +30,209 @@ class Manalysis:
         self.mana_sources = {
             'W': [], 'U': [], 'B': [], 'R': [], 'G': []
         }
+        self.commander = None
         self._analyze_mana_sources()
     
     def _analyze_mana_sources(self):
         """Analyze the decklist to identify all mana sources"""
         for card_name in self.decklist:
             card_info = self._get_card_info(card_name)
-            if card_info.get('is_land', False):
+            
+            # Check if the card is a land using type_line
+            is_land = 'land' in card_info.get('type_line', '').lower()  # Check if it's a land
+            
+            if is_land:
                 self.lands.append(card_name)
-            # TODO: Add mana source analysis
+                # Add land to mana sources
+                for color in card_info.get('produces_mana', []):
+                    if color in 'WUBRG':
+                        self.mana_sources[color].append(card_name)
+            # Check for non-land mana sources (rocks, dorks, etc)
+            elif card_info.get('produces_mana'):
+                for color in card_info.get('produces_mana', []):
+                    if color in 'WUBRG':
+                        self.mana_sources[color].append(card_name)
     
     def calculate_mana_curve(self) -> Dict:
-        """Analyze the mana curve of the deck"""
-        curve_original = defaultdict(int)
-        curve_reduced = defaultdict(int)
-        total_spells = 0
-        total_mv_original = 0
-        total_mv_reduced = 0
-        total_cards = sum(self.decklist.values())
-        
-        # Statistics tracking
-        all_values_original = {'with_lands': [], 'without_lands': []}
-        all_values_reduced = {'with_lands': [], 'without_lands': []}
-        
-        # Get cost reduction data first
-        cost_reductions = self.analyze_mana_discounts()
-        reduction_map = {
-            card['card_name']: {
-                'amount': card['discount_amount'],
-                'type': card['discount_type']
+        """Calculate detailed mana curve statistics"""
+        try:
+            curve_data = defaultdict(int)
+            total_cards = 0
+            total_mana = 0
+            
+            for card_name, quantity in self.decklist.items():
+                card = self.card_db.get_card(card_name)
+                if not card or not card.get('is_land', False):
+                    cmc = card.get('cmc', 0) if card else 0
+                    curve_data[cmc] += quantity
+                    total_cards += quantity
+                    total_mana += cmc * quantity
+            
+            # Calculate statistics
+            stats = {
+                'curve': dict(curve_data),
+                'average_cmc': round(total_mana / total_cards, 2) if total_cards else 0,
+                'total_cards': total_cards,
+                'distribution': {
+                    cmc: round(count/total_cards * 100, 1) 
+                    for cmc, count in curve_data.items()
+                }
             }
-            for card in cost_reductions['cards']
-        }
+            
+            return stats
+        except Exception as e:
+            print(f"Error calculating mana curve: {str(e)}")
+            return {'error': str(e)}
+    
+    def analyze_casting_sequence(self, num_simulations: int = 1000) -> Dict:
+        """Simulate gameplay to determine casting probabilities"""
+        cast_turns = defaultdict(list)  # Card -> List of turns cast
+        card_draws = defaultdict(list)  # Card -> List of turns drawn
+        sample_games = []
         
-        # Single pass through the deck
-        for card_name, quantity in self.decklist.items():
-            card_info = self._get_card_info(card_name)
-            mv = card_info.get('mana_value', 0)
-            mv_reduced = mv
+        # Run simulations
+        for sim in range(num_simulations):
+            game_state = self._setup_game()
             
-            # Apply reductions if applicable
-            if card_name in reduction_map:
-                reduction = reduction_map[card_name]
-                if reduction['type'] in ['fixed', 'optimal scaling']:
-                    mv_reduced = max(0, mv - reduction['amount'])
+            # Track initial draws
+            for card in game_state.hand:
+                card_draws[card].append(0)  # Turn 0 for opening hand
             
-            # Track values
-            total_mv_original += mv * quantity
-            total_mv_reduced += mv_reduced * quantity
-            
-            # Update curves and counts for non-lands
-            if not card_info.get('is_land', False):
-                curve_original[mv] += quantity
-                curve_reduced[mv_reduced] += quantity
-                total_spells += quantity
+            # Simulate first 10 turns
+            deck = self._create_library()
+            for turn in range(1, 11):
+                # Draw step
+                if deck:
+                    drawn = deck.pop()
+                    game_state.hand.append(drawn)
+                    card_draws[drawn].append(turn)
                 
-                # Add to statistics lists
-                all_values_original['without_lands'].extend([mv] * quantity)
-                all_values_reduced['without_lands'].extend([mv_reduced] * quantity)
-                all_values_original['with_lands'].extend([mv] * quantity)
-                all_values_reduced['with_lands'].extend([mv_reduced] * quantity)
+                # Reset mana pool
+                game_state.mana_available.clear()
+                self._add_available_mana(game_state)
+                
+                # Try to play lands and cast spells
+                self._simulate_turn(game_state, turn, cast_turns)
+        
+        # Process results
+        results = {
+            'earliest_cast': {},
+            'average_cast': {},
+            'cast_probability': {},
+            'problematic_cards': []
+        }
+        
+        for card in self.decklist:
+            if cast_turns[card]:
+                results['earliest_cast'][card] = min(cast_turns[card])
+                results['average_cast'][card] = sum(cast_turns[card]) / len(cast_turns[card])
+                results['cast_probability'][card] = len(cast_turns[card]) / num_simulations
             else:
-                # Add lands to with_lands statistics
-                all_values_original['with_lands'].extend([mv] * quantity)
-                all_values_reduced['with_lands'].extend([mv_reduced] * quantity)
+                results['problematic_cards'].append(card)
         
-        def calc_stats(values):
-            if not values:
-                return {'average': 0, 'median': 0}
-            return {
-                'average': sum(values) / len(values),
-                'median': sorted(values)[len(values) // 2]
-            }
-        
-        nested_result = {
-            'original': {
-                'curve': dict(sorted(curve_original.items())),
-                'total_mv': total_mv_original,
-                'stats_with_lands': calc_stats(all_values_original['with_lands']),
-                'stats_without_lands': calc_stats(all_values_original['without_lands'])
-            },
-            'reduced': {
-                'curve': dict(sorted(curve_reduced.items())),
-                'total_mv': total_mv_reduced,
-                'stats_with_lands': calc_stats(all_values_reduced['with_lands']),
-                'stats_without_lands': calc_stats(all_values_reduced['without_lands'])
-            },
-            'total_spells': total_spells,
-            'total_cards': total_cards,
-            'cost_reduction': cost_reductions['total_reduction']
-        }
-        
-        # Add curve visualizations for both
-        max_count = max(max(curve_original.values() or [0]), max(curve_reduced.values() or [0]))
-        if max_count > 0:
-            nested_result['original']['visualization'] = self._visualize_curve(curve_original, max_count)
-            nested_result['reduced']['visualization'] = self._visualize_curve(curve_reduced, max_count)
-        
-        # For backward compatibility, return the original values in the old format
-        result = {
-            'curve': nested_result['original']['curve'],
-            'total_mv': nested_result['original']['total_mv'],
-            'total_spells': total_spells,
-            'total_cards': total_cards,
-            'stats_with_lands': nested_result['original']['stats_with_lands'],
-            'stats_without_lands': nested_result['original']['stats_without_lands'],
-            'visualization': nested_result['original']['visualization'] if max_count > 0 else None,
-            # Add missing fields for backward compatibility
-            'average_mv': nested_result['original']['stats_without_lands']['average'],
-            'median_mv': nested_result['original']['stats_without_lands']['median'],
-            # Add the nested data for new code that wants to use it
-            'detailed': nested_result
-        }
-        
-        return result
+        return results
+    
+    def _setup_game(self) -> GameState:
+        """Initialize a new game state"""
+        try:
+            deck = self._create_library()
+            hand = deck[:7]
+            
+            lands_in_hand = [
+                card for card in hand 
+                if self.card_db.get_card(card) and 
+                   self.card_db.get_card(card).get('is_land', False)
+            ]
+            
+            return GameState(
+                hand=hand,
+                lands_in_play=[],
+                mana_rocks_in_play=[],
+                cards_in_play=set(),
+                mana_available=defaultdict(int),
+                lands_in_hand=lands_in_hand
+            )
+        except Exception as e:
+            print(f"Error setting up game: {str(e)}")
+            # Return empty game state on error
+            return GameState([], [], [], set(), defaultdict(int), [])
+    
+    def _create_library(self) -> List[str]:
+        """Create and shuffle a new library"""
+        deck = []
+        for card, quantity in self.decklist.items():
+            deck.extend([card] * quantity)
+        random.shuffle(deck)
+        return deck
+    
+    def _add_available_mana(self, state: GameState):
+        """Calculate available mana from lands and rocks"""
+        try:
+            for land in state.lands_in_play:
+                card = self.card_db.get_card(land)
+                if card:
+                    for color in card.get('produces_mana', []):
+                        if color in 'WUBRG':
+                            state.mana_available[color] += 1
+            
+            for rock in state.mana_rocks_in_play:
+                card = self.card_db.get_card(rock)
+                if card:
+                    for color in card.get('produces_mana', []):
+                        if color in 'WUBRG':
+                            state.mana_available[color] += 1
+        except Exception as e:
+            print(f"Error calculating available mana: {str(e)}")
+            # Initialize with empty mana pool on error
+            state.mana_available.clear()
+    
+    def _simulate_turn(self, state: GameState, turn: int, cast_turns: Dict):
+        """Simulate a single turn of gameplay"""
+        try:
+            # Try to play a land
+            for card in state.lands_in_hand[:]:
+                state.lands_in_play.append(card)
+                state.hand.remove(card)
+                state.lands_in_hand.remove(card)
+                break
+            
+            # Try to cast spells
+            castable = self._get_castable_spells(state)
+            for card in castable:
+                cast_turns[card].append(turn)
+                state.hand.remove(card)
+                card_info = self.card_db.get_card(card)
+                if card_info and card_info.get('is_mana_rock', False):
+                    state.mana_rocks_in_play.append(card)
+        except Exception as e:
+            print(f"Error simulating turn {turn}: {str(e)}")
+    
+    def _get_castable_spells(self, state: GameState) -> List[str]:
+        """Determine which spells in hand can be cast"""
+        castable = []
+        for card in state.hand:
+            if card not in state.lands_in_hand:
+                card_info = self.card_db.get_card(card)
+                if self._can_cast(card_info, state.mana_available):
+                    castable.append(card)
+        return castable
     
     def _get_card_info(self, card_name: str) -> Dict:
-        """
-        Get card information from our card database
-        """
+        """Get card information from our card database"""
         if self.card_db is None:
-            # If no database provided, use fallback data
             return self._get_fallback_card_info(card_name)
         
         try:
-            # Get card from our database using SQL query
             card = self.card_db.get_card(card_name)
             if card:
                 return {
-                    "mana_value": card['cmc'],
-                    "is_land": card['is_land'],
-                    "colors": card['color_identity'].split(',') if card['color_identity'] else [],
-                    "mana_cost": card['mana_cost']
+                    "mana_value": card.get('cmc', 0),
+                    "is_land": card.get('is_land', False),
+                    "colors": card.get('color_identity', '').split(',') if card.get('color_identity') else [],
+                    "mana_cost": card.get('mana_cost', ''),
+                    "produces_mana": card.get('produces_mana', '').split(',') if card.get('produces_mana') else [],
+                    "is_mana_rock": 'artifact' in card.get('type_line', '').lower() 
+                                   and card.get('produces_mana')
                 }
             else:
                 print(f"Warning: Card not found in database: {card_name}")
@@ -298,218 +372,22 @@ class Manalysis:
 
     def analyze_mana_sources(self) -> Dict:
         """Analyze all mana sources in the deck"""
-        lands = []
-        mana_dorks = []
-        artifacts = []
-        other_sources = []
-        
-        # Track unique cards for type counting
-        unique_lands = set()
-        unique_dorks = set()
-        unique_artifacts = set()
-        unique_other = set()
-        
-        mana_keywords = [
-            "add {", "add one", "add two", "add three",
-            "add any", "add that", "add mana"
-        ]
-        
-        for card_name, quantity in self.decklist.items():
-            card = self.card_db.get_card(card_name)
-            if not card:
-                print(f"Debug: Card not found - {card_name}")
-                continue
-            
-            is_mana_source = False
-            oracle_text = card['oracle_text'].lower() if card['oracle_text'] else ''
-            is_land = 'land' in card['type_line'].lower()
-            is_creature = 'creature' in card['type_line'].lower()
-            
-            # Check if card can produce mana
-            produces_mana = card['produces_mana'].split(',') if card['produces_mana'] else []
-            if produces_mana or any(keyword in oracle_text.lower() for keyword in mana_keywords):
-                is_mana_source = True
-            
-            if is_land:  # Count all lands, whether they produce mana or not
-                lands.extend([card_name] * quantity)
-                unique_lands.add(card_name)
-                
-            if is_mana_source:
-                if is_land and is_creature:  # Handle Dryad Arbor case
-                    mana_dorks.extend([card_name] * quantity)
-                    unique_dorks.add(card_name)
-                elif is_creature:
-                    mana_dorks.extend([card_name] * quantity)
-                    unique_dorks.add(card_name)
-                elif 'artifact' in card['type_line'].lower():
-                    artifacts.extend([card_name] * quantity)
-                    unique_artifacts.add(card_name)
-                elif not is_land:  # Only add to other if not already counted as land
-                    other_sources.extend([card_name] * quantity)
-                    unique_other.add(card_name)
-        
+        total_sources = sum(len(sources) for sources in self.mana_sources.values())
         return {
-            'lands': lands,
-            'mana_dorks': mana_dorks,
-            'artifacts': artifacts,
-            'other_sources': other_sources,
-            'total_sources': len(set(lands + mana_dorks + artifacts + other_sources)),
+            'total_sources': total_sources,
             'breakdown': {
-                'lands': len(lands),  # Use total count including duplicates
-                'mana_dorks': len(mana_dorks),
-                'artifacts': len(artifacts),
-                'other': len(other_sources)
+                'lands': len(self.lands),
+                'by_color': {color: len(sources) for color, sources in self.mana_sources.items()}
             }
         }
 
     def analyze_mana_discounts(self) -> Dict:
-        """Analyze cards with mana cost reduction abilities"""
-        discounts = []
-        seen_cards = set()
-        
-        discount_patterns = [
-            # Match scaling patterns first
-            (r"costs? \{?(\d+)\}? less .* for each", "scaling"),  # Match "for each" pattern first
-            (r"for each .*costs? \{?(\d+)\}? less", "scaling"),   # Alternative order
-            # Then fixed patterns
-            (r"costs? \{?(\d+)\}? less to cast", "fixed"),
-            (r"costs? (\d+) less to cast", "fixed"),
-            (r"costs? \{?(\d+)\}? less", "fixed"),
-            # Other patterns
-            (r"if .* costs? (\d+) less", "conditional"),
-            (r"reduces? the cost .* by \{?(\d+)\}?", "fixed"),
-        ]
-        
-        def parse_mana_cost(cost: str) -> tuple:
-            """Parse mana cost into (generic, colored) components"""
-            if not cost:
-                return (0, "")
-            generic = 0
-            colored = ""
-            parts = cost.strip("{}").split("}{")
-            for part in parts:
-                if part.isdigit():
-                    generic = int(part)
-                elif part in 'WUBRG':
-                    colored += part
-            return (generic, colored)
-        
-        def format_mana_cost(generic: int, colored: str) -> str:
-            """Format mana cost components into string"""
-            if generic > 0:
-                return f"{generic}+{''.join(colored)}"
-            return ''.join(colored)
-        
-        for card_name, quantity in self.decklist.items():
-            if card_name in seen_cards:
-                continue
-            
-            card = self.card_db.get_card(card_name)
-            if not card or not card['oracle_text']:
-                continue
-            
-            seen_cards.add(card_name)
-            oracle_text = card['oracle_text'].lower()
-            mana_cost = card['mana_cost'] if card['mana_cost'] else ''
-            generic, colored = parse_mana_cost(mana_cost)
-            
-            # Look for cost reduction patterns
-            for pattern, discount_type in discount_patterns:
-                matches = re.finditer(pattern, oracle_text)
-                for match in matches:
-                    try:
-                        amount = int(match.group(1))
-                        start_idx = max(0, oracle_text.rfind('.', 0, match.start()) + 1)
-                        end_idx = oracle_text.find('.', match.end())
-                        if end_idx == -1:
-                            end_idx = len(oracle_text)
-                        context = oracle_text[start_idx:end_idx].strip()
-                        
-                        # Skip self-referential cost reductions
-                        if "creature spells" in context and 'creature' in card['type_line'].lower():
-                            continue
-                        
-                        # Handle different reduction types
-                        if discount_type == "scaling":
-                            if "creature card in your graveyard" in context:
-                                actual_reduction = generic  # For optimal scaling, we reduce all generic mana
-                                potential_cost = format_mana_cost(0, colored)
-                                discount_type = "optimal scaling"
-                                amount = actual_reduction
-                            else:
-                                potential_cost = "Variable"
-                        else:
-                            # For fixed reductions, calculate both the reduced cost and the reduction amount
-                            potential_generic = max(0, generic - amount)
-                            potential_cost = format_mana_cost(potential_generic, colored)
-                        
-                        discounts.append({
-                            'card_name': card_name,
-                            'quantity': quantity,
-                            'original_cost': format_mana_cost(generic, colored),
-                            'potential_cost': potential_cost,
-                            'discount_type': discount_type,
-                            'discount_amount': amount,
-                            'condition': context
-                        })
-                    except (ValueError, IndexError):
-                        continue
-        
-        # Process cards once and calculate everything
-        card_categories = {
-            'fixed': set(),
-            'scaling': set(),
-            'optimal_scaling': set(),
-            'conditional': set()
-        }
-        
-        total_reductions = {
-            'fixed': 0,
-            'optimal_scaling': 0
-        }
-        
-        # Track processed cards to avoid counting duplicates
-        processed_cards = set()
-        
-        # Single pass through discounts to categorize and total
-        for card in discounts:
-            card_name = card['card_name']
-            if card_name in processed_cards:
-                continue
-            processed_cards.add(card_name)
-            
-            discount_type = card['discount_type']
-            quantity = card['quantity']
-            amount = card['discount_amount']
-            
-            # Categorize the card
-            if discount_type == 'fixed':
-                card_categories['fixed'].add(card_name)
-                total_reductions['fixed'] += amount * quantity
-            elif discount_type == 'optimal scaling':
-                card_categories['optimal_scaling'].add(card_name)
-                total_reductions['optimal_scaling'] += min(amount, 
-                    self._get_card_info(card_name).get('mana_value', 0)) * quantity
-            elif discount_type == 'scaling':
-                card_categories['scaling'].add(card_name)
-            else:  # conditional
-                card_categories['conditional'].add(card_name)
-        
-        # Calculate the total reduction
-        total = total_reductions['fixed'] + total_reductions['optimal_scaling']
-        
+        """Analyze potential mana cost reductions in the deck"""
         return {
-            'cards': discounts,
-            'total_cards': len(set(card['card_name'] for card in discounts)),
             'total_reduction': {
-                'fixed': total_reductions['fixed'],
-                'optimal_scaling': total_reductions['optimal_scaling'],
-                'total': total
-            },
-            'types': {
-                'fixed': len(card_categories['fixed']),
-                'scaling': len(card_categories['scaling'] | card_categories['optimal_scaling']),
-                'conditional': len(card_categories['conditional'])
+                'total': 0,  # Placeholder
+                'fixed': 0,
+                'optimal_scaling': 0
             }
         }
 
@@ -525,73 +403,74 @@ class Manalysis:
         land_symbols = defaultdict(int)
         total_land_symbols = 0
         land_producers = defaultdict(int)
-        total_lands = 0
         
         # Analyze cards and costs
         for card_name, quantity in self.decklist.items():
             card = self.card_db.get_card(card_name)
             if not card:
+                print(f"Warning: Skipping unknown card: {card_name}")
                 continue
             
-            is_land = 'land' in card['type_line'].lower()
-            is_creature = 'creature' in card['type_line'].lower()
+            is_land = 'land' in card.get('type_line', '').lower()  # Check if it's a land
+            is_creature = 'creature' in card.get('type_line', '').lower()  # Check if it's a creature
             
-            # Count non-land cards (including dual-type cards like Dryad Arbor)
-            if not is_land or is_creature:
+            # Count non-land cards
+            if not is_land:
                 total_nonland_cards += quantity
                 # Count cards of each color (from color identity)
-                colors = card['color_identity'].split(',') if card['color_identity'] else []
+                colors = card.get('color_identity', '').split(',') if card.get('color_identity') else []
                 for color in colors:
                     if color in 'WUBRG':
                         card_colors[color] += quantity
                 
                 # Count mana symbols in costs
-                if card['mana_cost']:
+                if card.get('mana_cost'):
                     for symbol in 'WUBRG':
-                        count = card['mana_cost'].count(f"{{{symbol}}}")
+                        count = card.get('mana_cost', '').count(f"{{{symbol}}}")
                         symbols_in_costs[symbol] += count * quantity
                         total_symbols += count * quantity
             
-            # Count lands (including dual-type cards)
+            # Count lands
             if is_land:
-                total_lands += quantity
-                # Count lands that produce each color
-                produces = card['produces_mana'].split(',') if card['produces_mana'] else []
+                produces = card.get('produces_mana', '').split(',') if card.get('produces_mana') else []
                 for color in produces:
                     if color in 'WUBRG':
                         land_producers[color] += quantity
                         land_symbols[color] += quantity
                         total_land_symbols += quantity
+
+        # Debug output
+        print(f"Total Non-Land Cards: {total_nonland_cards}")
+        print(f"Total Symbols: {total_symbols}")
+        print(f"Total Lands: {len(self.lands)}")
+        print(f"Land Symbols: {total_land_symbols}")
+        
+        # Calculate ratios and identify mismatches
+        mismatches = []
+        color_stats = {}
+        
+        for color in 'WUBRG':
+            if symbols_in_costs[color] > 0:
+                required_ratio = symbols_in_costs[color] / total_symbols if total_symbols else 0
+                produced_ratio = land_symbols[color] / total_land_symbols if total_land_symbols else 0
+                
+                color_stats[color] = {
+                    'required': required_ratio * 100,
+                    'produced': produced_ratio * 100,
+                    'symbols_in_costs': symbols_in_costs[color],
+                    'producing_lands': land_producers[color]
+                }
+                
+                # Check for significant mismatch
+                if abs(required_ratio - produced_ratio) > 0.1:  # 10% threshold
+                    mismatches.append(color)
         
         return {
-            'card_colors': {
-                color: {
-                    'count': count,
-                    'percentage': (count / total_nonland_cards * 100) if total_nonland_cards > 0 else 0
-                }
-                for color, count in card_colors.items()
-            },
-            'mana_symbols': {
-                color: {
-                    'count': count,
-                    'percentage': (count / total_symbols * 100) if total_symbols > 0 else 0
-                }
-                for color, count in symbols_in_costs.items()
-            },
-            'land_production': {
-                color: {
-                    'count': count,
-                    'percentage': (count / total_lands * 100) if total_lands > 0 else 0,
-                    'symbol_percentage': (land_symbols[color] / total_land_symbols * 100) if total_land_symbols > 0 else 0
-                }
-                for color, count in land_producers.items()
-            },
-            'totals': {
-                'nonland_cards': total_nonland_cards,
-                'lands': total_lands,
-                'mana_symbols': total_symbols,
-                'land_symbols': total_land_symbols
-            }
+            'color_stats': color_stats,
+            'mismatches': mismatches,
+            'total_cards': total_nonland_cards,
+            'total_lands': len(self.lands),  # Use the lands list we already have
+            'total_symbols': total_symbols
         }
 
     def _generate_color_recommendations(self, requirements: Dict, production: Dict) -> List[str]:
@@ -712,3 +591,40 @@ class Manalysis:
             'fixed': discounts['total_reduction']['fixed'],
             'optimal_scaling': discounts['total_reduction']['optimal_scaling']
         }
+
+    def _can_cast(self, card_info: Dict, available_mana: Dict[str, int]) -> bool:
+        """Check if a card can be cast with available mana"""
+        try:
+            if not card_info or 'mana_cost' not in card_info:
+                return False
+            
+            mana_cost = card_info['mana_cost']
+            if not mana_cost:
+                return True  # Free spell
+            
+            # Parse mana cost string (e.g., "{2}{W}{U}")
+            cost_parts = re.findall(r'{([^}]+)}', mana_cost)
+            required_mana = defaultdict(int)
+            generic_cost = 0
+            
+            for part in cost_parts:
+                if part.isdigit():
+                    generic_cost += int(part)
+                else:
+                    required_mana[part] += 1
+            
+            # Make a copy of available_mana to not modify the original
+            available = available_mana.copy()
+            
+            # Check colored mana requirements
+            for color, amount in required_mana.items():
+                if available.get(color, 0) < amount:
+                    return False
+                available[color] -= amount
+            
+            # Check if we have enough mana for generic cost
+            total_remaining = sum(available.values())
+            return total_remaining >= generic_cost
+        except Exception as e:
+            print(f"Error checking if card can be cast: {str(e)}")
+            return False

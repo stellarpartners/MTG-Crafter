@@ -171,52 +171,46 @@ class DeckLoader:
             self.deck_dir.mkdir(parents=True, exist_ok=True)
             return decks
         
-        print(f"\nDebug: Scanning directory {self.deck_dir.absolute()}")
-        # First, list all JSON files in directory
         json_files = list(self.deck_dir.glob("*.json"))
-        print(f"Debug: Found {len(json_files)} JSON files:")
-        for f in json_files:
-            print(f"  - {f.name}")
-        
         for deck_file in json_files:
             try:
-                print(f"\nDebug: Attempting to load {deck_file.name}")
                 with open(deck_file, 'r', encoding='utf-8') as f:
                     deck_data = json.load(f)
-                    deck_info = {
+                    decks.append({
                         'name': deck_data.get('name', deck_file.stem),
                         'commander': deck_data.get('commander', 'Unknown'),
                         'total_cards': sum(deck_data.get('cards', {}).values()),
                         'manalysis': deck_data.get('manalysis', None)
-                    }
-                    decks.append(deck_info)
-                    print(f"Debug: Successfully loaded deck '{deck_info['name']}'")
-                    print(f"Debug: Commander: {deck_info['commander']}")
-                    print(f"Debug: Total cards: {deck_info['total_cards']}")
+                    })
             except Exception as e:
                 print(f"Warning: Could not load {deck_file}: {str(e)}")
-                print(f"Debug: Exception type: {type(e)}")
-                import traceback
-                print(f"Debug: Traceback:\n{traceback.format_exc()}")
                 continue
         
-        print(f"\nDebug: Total decks loaded: {len(decks)}")
         return decks
     
     def load_saved_deck_with_data(self, deck_identifier: str) -> Dict:
         """Load a saved deck with all its data"""
-        deck_path = self.deck_dir / f"{deck_identifier}.json"
+        # Handle numeric input
+        if deck_identifier.isdigit():
+            decks = self.list_saved_decks()
+            idx = int(deck_identifier) - 1
+            if 0 <= idx < len(decks):
+                deck_identifier = decks[idx]['name']  # Use the deck's name, not the index
+            else:
+                raise ValueError(f"Invalid deck number: {deck_identifier}")
+        
+        deck_path = self.deck_dir / f"{self._sanitize_filename(deck_identifier)}.json"
         if not deck_path.exists():
             # Try case-insensitive search
             for file in self.deck_dir.glob("*.json"):
-                if file.stem.lower() == deck_identifier.lower():
+                if file.stem.lower() == self._sanitize_filename(deck_identifier).lower():
                     deck_path = file
                     break
             if not deck_path.exists():
                 raise ValueError(f"Deck '{deck_identifier}' not found")
         
         try:
-            with open(deck_path, 'r') as f:
+            with open(deck_path, 'r', encoding='utf-8') as f:
                 deck_data = json.load(f)
                 self.commander = deck_data.get('commander')
                 return deck_data
@@ -225,18 +219,28 @@ class DeckLoader:
     
     def update_deck(self, deck_identifier: str) -> bool:
         """Update an existing deck with new information"""
-        deck_path = self.deck_dir / f"{deck_identifier}.json"
-        if not deck_path.exists():
-            # Try case-insensitive search
-            for file in self.deck_dir.glob("*.json"):
-                if file.stem.lower() == deck_identifier.lower():
-                    deck_path = file
-                    break
-            if not deck_path.exists():
-                print(f"Error: Deck '{deck_identifier}' not found")
-                return False
-        
         try:
+            # Handle numeric input
+            if deck_identifier.isdigit():
+                decks = self.list_saved_decks()
+                idx = int(deck_identifier) - 1
+                if 0 <= idx < len(decks):
+                    deck_identifier = decks[idx]['name']  # Use the deck's name
+                else:
+                    print(f"Error: Invalid deck number: {deck_identifier}")
+                    return False
+            
+            deck_path = self.deck_dir / f"{self._sanitize_filename(deck_identifier)}.json"
+            if not deck_path.exists():
+                # Try case-insensitive search
+                for file in self.deck_dir.glob("*.json"):
+                    if file.stem.lower() == self._sanitize_filename(deck_identifier).lower():
+                        deck_path = file
+                        break
+                if not deck_path.exists():
+                    print(f"Error: Deck '{deck_identifier}' not found")
+                    return False
+            
             with open(deck_path, 'r') as f:
                 deck_data = json.load(f)
             
