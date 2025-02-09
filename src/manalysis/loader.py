@@ -7,6 +7,7 @@ from typing import Dict, List
 import json
 from datetime import datetime
 import re
+import pyperclip  # Ensure this is imported for clipboard functionality
 
 class DeckLoader:
     """Class for loading and saving Magic: The Gathering decklists"""
@@ -19,8 +20,7 @@ class DeckLoader:
     def load_from_clipboard(self) -> Dict[str, int]:
         """Load decklist from clipboard"""
         try:
-            import pyperclip
-            text = pyperclip.paste()
+            text = pyperclip.paste()  # Get text from clipboard
         except ImportError:
             raise ImportError("pyperclip package required for clipboard support")
         
@@ -126,6 +126,7 @@ class DeckLoader:
             with open(deck_path, 'r') as f:
                 deck_data = json.load(f)
                 self.commander = deck_data.get('commander')
+                print(f"Loaded deck data: {deck_data}")  # Debugging output
                 return deck_data
         except Exception as e:
             raise ValueError(f"Error loading deck: {str(e)}")

@@ -48,9 +48,7 @@ class DataEngine:
                 cache_dir=str(self.cache_dir / "scryfall")
             )
             
-            self.database = CardDatabase(
-                data_dir=str(self.data_dir / "database")
-            )
+            self.database = CardDatabase()
             
             self.banlist = BanlistCollector(
                 cache_dir=str(self.cache_dir / "banlists"),
@@ -289,6 +287,13 @@ class DataEngine:
             for collector in ['sets', 'banlists', 'rules', 'themes']:
                 if self._update_collector(collector):
                     self.save_metadata()
+
+    def cleanup(self):
+        """Close all connections and clean up resources"""
+        if self.database:
+            self.database.force_close()
+        if hasattr(self, "conn"):
+            self.conn = None
 
 if __name__ == "__main__":
     engine = DataEngine()

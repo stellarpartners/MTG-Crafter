@@ -3,6 +3,7 @@ import shutil
 import json
 from datetime import datetime
 from typing import Tuple, List
+import os
 
 from src.collectors.data_engine import DataEngine
 from src.database.card_database import CardDatabase
@@ -97,35 +98,46 @@ def validate_cache(engine: DataEngine) -> Tuple[bool, List[str]]:
     return len(issues) == 0, issues
 
 def rebuild_data(engine: DataEngine):
-    """Delete all processed data and recompile from cache"""
+    """Rebuild processed data from cache"""
     print("\nValidating cache before rebuild...")
-    is_valid, issues = validate_cache(engine)
     
-    if not is_valid:
-        print("\nCache validation failed. Issues found:")
-        for issue in issues:
-            print(f"- {issue}")
-            
-        print("\nRebuilding with incomplete cache may result in missing data.")
-        confirm = input("Continue anyway? (y/N): ")
-        if confirm.lower() != 'y':
-            print("Operation cancelled.")
-            return
+    # Close database connection first
+    if engine.database:
+        engine.database.close()
     
-    # Delete all processed data
-    print("\nCleaning up processed data...")
-    for path in engine.data_dir.glob("*"):
-        if path.is_file():
-            print(f"Removing file: {path}")
-            path.unlink()
-        elif path.is_dir():
+    # Cleanup directories safely
+    dirs_to_remove = [
+        engine.data_dir / "analyzed_cards",
+        engine.data_dir / "banlists",
+        engine.data_dir / "cleaned_decklists",
+        engine.data_dir / "database"  # Now handles this properly
+    ]
+    
+    for path in dirs_to_remove:
+        if path.exists():
             print(f"Removing directory: {path}")
-            shutil.rmtree(path)
-    
-    print("\nRecompiling from cache...")
-    engine.cold_start(force_download=False)
-    engine.database = CardDatabase()  # Removed data_dir argument
-    print("Data rebuild complete!")
+            try:
+                # Handle database file separately
+                if path.name == "database":
+                    db_file = path / "cards.db"
+                    if db_file.exists():
+                        os.chmod(db_file, 0o777)  # Ensure writable
+                        db_file.unlink()
+                    # Remove remaining files
+                    for f in path.glob("*"):
+                        if f.is_file():
+                            f.unlink()
+                shutil.rmtree(path, ignore_errors=True)
+            except Exception as e:
+                print(f"Warning: Could not remove {path} - {str(e)}")
+                continue
+
+    print("\nRebuilding from cache...")
+    # Reinitialize database
+    engine.database = CardDatabase()
+    engine.database.load_from_cache(engine.cache_dir)
+    engine.database.close()
+    print("Rebuild complete!")
 
 def print_cache_status(engine: DataEngine):
     """Display current cache status"""
@@ -293,9 +305,10 @@ def build_sqlite_database(engine: DataEngine):
     """Build SQLite database from cache"""
     print("\nChecking database status...")
     
-    # Initialize database
+    # Initialize database with proper path
+    db_path = engine.data_dir / "database" / "cards.db"
     from src.database.card_database import CardDatabase
-    db = CardDatabase()
+    db = CardDatabase(db_path=db_path)
     
     try:
         if not db.needs_update(engine.cache_dir):
@@ -312,6 +325,7 @@ def build_sqlite_database(engine: DataEngine):
         cursor = db.conn.execute("SELECT COUNT(*) FROM cards")
         count = cursor.fetchone()[0]
         print(f"\nSuccessfully loaded {count} unique cards into database!")
+        print(f"Database location: {db_path.resolve()}")
         
     except Exception as e:
         print(f"\nError building database: {e}")
@@ -336,6 +350,7 @@ def main():
                 engine = DataEngine(light_init=True)
                 
                 # Create necessary directories if they don't exist
+                (engine.data_dir / "database").mkdir(parents=True, exist_ok=True)
                 (engine.cache_dir / "scryfall/sets").mkdir(parents=True, exist_ok=True)
                 (engine.cache_dir / "banlists").mkdir(parents=True, exist_ok=True)
                 (engine.cache_dir / "rules").mkdir(parents=True, exist_ok=True)

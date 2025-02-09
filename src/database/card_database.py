@@ -4,15 +4,17 @@ import json
 import hashlib
 from typing import Dict, Optional, List
 from datetime import datetime
+import os  # Import os for path handling
 
 class CardDatabase:
     """SQLite database for card information"""
     
-    def __init__(self, data_dir: str = "data"):
-        self.data_dir = Path(data_dir)
-        
-        # Set the database path
-        self.db_path = self.data_dir / "cards.db"  # Ensure this path is correct
+    def __init__(self, db_path=None):
+        # Set default path to data/database/cards.db
+        if db_path is None:
+            self.db_path = Path(__file__).parent.parent.parent / "data" / "database" / "cards.db"
+        else:
+            self.db_path = Path(db_path)
         
         # Create the parent directory if it doesn't exist
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
@@ -95,17 +97,27 @@ class CardDatabase:
             self.conn.execute("DELETE FROM cards")
             
             # Process each set file
-            for set_file in sets_dir.glob("*.json"):
+            for set_file in sorted(sets_dir.glob("*.json")):
                 try:
                     with open(set_file, 'r', encoding='utf-8') as f:
-                        cards = json.load(f)
+                        set_data = json.load(f)
                         
-                    for card in cards:
-                        # Skip non-primary card faces for double-faced cards
-                        if card.get('layout') in ['transform', 'modal_dfc'] and not card.get('is_front', True):
+                    for card in set_data:
+                        # Handle double-faced cards
+                        if card.get('layout') in ['transform', 'modal_dfc']:
+                            if 'card_faces' in card:
+                                # Use front face for main attributes
+                                front_face = card['card_faces'][0]
+                                card['oracle_text'] = front_face.get('oracle_text', '')
+                                card['type_line'] = front_face.get('type_line', '')
+                                card['mana_cost'] = front_face.get('mana_cost', '')
+                                
+                        # Ensure we're using the correct name field
+                        card_name = card.get('name')
+                        if not card_name:
                             continue
                             
-                        # Extract mana production from oracle text
+                        # Insert/update card data
                         produces_mana = self._extract_mana_production(card)
                         
                         self.conn.execute("""
@@ -114,19 +126,19 @@ class CardDatabase:
                                 color_identity, is_land, produces_mana, layout
                             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
-                            card['name'],
+                            card_name,
                             card.get('mana_cost'),
                             card.get('cmc', 0),
                             card.get('type_line', ''),
                             card.get('oracle_text', ''),
-                            ','.join(card.get('color_identity', [])),
+                            json.dumps(card.get('color_identity', [])),
                             'Land' in card.get('type_line', ''),
                             ','.join(produces_mana),
                             card.get('layout', 'normal')
                         ))
-                        
                 except Exception as e:
                     print(f"Error processing {set_file}: {e}")
+                    continue
             
             # Update version info
             cache_hash = self._compute_cache_hash(cache_dir)
@@ -177,14 +189,15 @@ class CardDatabase:
                         'cmc': row[1],
                         'type_line': row[2],
                         'oracle_text': row[3],
-                        'color_identity': row[4],
+                        'color_identity': json.loads(row[4]) if row[4] else [],
                         'mana_cost': row[5],
-                        'produces_mana': row[6],
+                        'produces_mana': row[6].split(',') if row[6] else [],
                         'is_land': bool(row[7])
                     }
                 return None
                 
         except Exception as e:
+            print(f"Error retrieving card: {e}")
             return None
     
     def search_cards(self, query: str) -> List[sqlite3.Row]:
@@ -197,4 +210,10 @@ class CardDatabase:
     
     def close(self):
         """Close database connection"""
-        self.conn.close() 
+        self.conn.close()
+    
+    def force_close(self):
+        """Force close the database connection"""
+        if self.conn:
+            self.conn.close()
+            self.conn = None 

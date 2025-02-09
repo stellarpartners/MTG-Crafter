@@ -59,27 +59,51 @@ class Manalysis:
             curve_data = defaultdict(int)
             total_cards = 0
             total_mana = 0
+            total_mana_without_lands = 0
+            cmc_values = []
+            cmc_values_without_lands = []
             
             for card_name, quantity in self.decklist.items():
-                card = self.card_db.get_card(card_name)
-                if not card or not card.get('is_land', False):
-                    cmc = card.get('cmc', 0) if card else 0
-                    curve_data[cmc] += quantity
-                    total_cards += quantity
-                    total_mana += cmc * quantity
+                card = self._get_card_info(card_name)
+                if not card:
+                    continue
+                
+                cmc = card.get('mana_value', 0)
+                is_land = card.get('is_land', False)
+                
+                # Update counts
+                curve_data[cmc] += quantity
+                total_cards += quantity
+                total_mana += cmc * quantity
+                cmc_values.extend([cmc] * quantity)
+                
+                if not is_land:
+                    total_mana_without_lands += cmc * quantity
+                    cmc_values_without_lands.extend([cmc] * quantity)
             
-            # Calculate statistics
-            stats = {
+            # Calculate averages
+            avg_cmc = total_mana / total_cards if total_cards else 0
+            avg_cmc_without_lands = total_mana_without_lands / len(cmc_values_without_lands) if cmc_values_without_lands else 0
+            
+            # Calculate medians
+            cmc_values.sort()
+            cmc_without_lands_sorted = sorted(cmc_values_without_lands)
+            median_cmc = cmc_values[len(cmc_values)//2] if cmc_values else 0
+            median_cmc_without_lands = cmc_without_lands_sorted[len(cmc_without_lands_sorted)//2] if cmc_without_lands_sorted else 0
+            
+            return {
                 'curve': dict(curve_data),
-                'average_cmc': round(total_mana / total_cards, 2) if total_cards else 0,
+                'average_cmc': round(avg_cmc, 2),
+                'average_cmc_without_lands': round(avg_cmc_without_lands, 2),
+                'median_cmc': median_cmc,
+                'median_cmc_without_lands': median_cmc_without_lands,
+                'total_mana_value': total_mana,
                 'total_cards': total_cards,
                 'distribution': {
                     cmc: round(count/total_cards * 100, 1) 
                     for cmc, count in curve_data.items()
                 }
             }
-            
-            return stats
         except Exception as e:
             print(f"Error calculating mana curve: {str(e)}")
             return {'error': str(e)}
@@ -228,9 +252,9 @@ class Manalysis:
                 return {
                     "mana_value": card.get('cmc', 0),
                     "is_land": card.get('is_land', False),
-                    "colors": card.get('color_identity', '').split(',') if card.get('color_identity') else [],
+                    "colors": card.get('color_identity', []),
                     "mana_cost": card.get('mana_cost', ''),
-                    "produces_mana": card.get('produces_mana', '').split(',') if card.get('produces_mana') else [],
+                    "produces_mana": card.get('produces_mana', []),
                     "is_mana_rock": 'artifact' in card.get('type_line', '').lower() 
                                    and card.get('produces_mana')
                 }
@@ -391,172 +415,24 @@ class Manalysis:
             }
         }
 
-    def analyze_color_balance(self) -> Dict:
-        """Analyze color requirements vs production"""
-        # Track card colors and mana symbols
-        card_colors = defaultdict(int)
-        symbols_in_costs = defaultdict(int)
-        total_nonland_cards = 0
-        total_symbols = 0
+    def analyze_color_balance(self):
+        """Analyze color distribution of the deck"""
+        color_counts = defaultdict(int)
         
-        # Track mana production
-        land_symbols = defaultdict(int)
-        total_land_symbols = 0
-        land_producers = defaultdict(int)
-        
-        # Analyze cards and costs
         for card_name, quantity in self.decklist.items():
-            card = self.card_db.get_card(card_name)
-            if not card:
-                print(f"Warning: Skipping unknown card: {card_name}")
+            try:
+                card = self.card_db.get_card(card_name)
+                if not card:
+                    continue
+                
+                colors = card.get('color_identity', [])
+                for color in colors:
+                    color_counts[color] += quantity
+            except Exception as e:
+                print(f"Error processing {card_name}: {str(e)}")
                 continue
             
-            is_land = 'land' in card.get('type_line', '').lower()  # Check if it's a land
-            is_creature = 'creature' in card.get('type_line', '').lower()  # Check if it's a creature
-            
-            # Count non-land cards
-            if not is_land:
-                total_nonland_cards += quantity
-                # Count cards of each color (from color identity)
-                colors = card.get('color_identity', '').split(',') if card.get('color_identity') else []
-                for color in colors:
-                    if color in 'WUBRG':
-                        card_colors[color] += quantity
-                
-                # Count mana symbols in costs
-                if card.get('mana_cost'):
-                    for symbol in 'WUBRG':
-                        count = card.get('mana_cost', '').count(f"{{{symbol}}}")
-                        symbols_in_costs[symbol] += count * quantity
-                        total_symbols += count * quantity
-            
-            # Count lands
-            if is_land:
-                produces = card.get('produces_mana', '').split(',') if card.get('produces_mana') else []
-                for color in produces:
-                    if color in 'WUBRG':
-                        land_producers[color] += quantity
-                        land_symbols[color] += quantity
-                        total_land_symbols += quantity
-
-        # Debug output
-        print(f"Total Non-Land Cards: {total_nonland_cards}")
-        print(f"Total Symbols: {total_symbols}")
-        print(f"Total Lands: {len(self.lands)}")
-        print(f"Land Symbols: {total_land_symbols}")
-        
-        # Calculate ratios and identify mismatches
-        mismatches = []
-        color_stats = {}
-        
-        for color in 'WUBRG':
-            if symbols_in_costs[color] > 0:
-                required_ratio = symbols_in_costs[color] / total_symbols if total_symbols else 0
-                produced_ratio = land_symbols[color] / total_land_symbols if total_land_symbols else 0
-                
-                color_stats[color] = {
-                    'required': required_ratio * 100,
-                    'produced': produced_ratio * 100,
-                    'symbols_in_costs': symbols_in_costs[color],
-                    'producing_lands': land_producers[color]
-                }
-                
-                # Check for significant mismatch
-                if abs(required_ratio - produced_ratio) > 0.1:  # 10% threshold
-                    mismatches.append(color)
-        
-        return {
-            'color_stats': color_stats,
-            'mismatches': mismatches,
-            'total_cards': total_nonland_cards,
-            'total_lands': len(self.lands),  # Use the lands list we already have
-            'total_symbols': total_symbols
-        }
-
-    def _generate_color_recommendations(self, requirements: Dict, production: Dict) -> List[str]:
-        """Generate recommendations based on color analysis"""
-        recommendations = []
-        
-        # Calculate total production per color
-        total_production = defaultdict(int)
-        for source in production.values():
-            for color, count in source.items():
-                total_production[color] += count
-        
-        # Analyze each color
-        for color in 'WUBRG':
-            req_percent = requirements.get(color, 0)
-            prod_percent = total_production.get(color, 0)
-            
-            if req_percent > 0:
-                if prod_percent < req_percent * 0.8:
-                    recommendations.append(
-                        f"⚠️ Insufficient {color} production ({prod_percent:.1f}%) "
-                        f"for requirements ({req_percent:.1f}%)"
-                    )
-                elif prod_percent > req_percent * 1.5:
-                    recommendations.append(
-                        f"ℹ️ Excess {color} production ({prod_percent:.1f}%) "
-                        f"for requirements ({req_percent:.1f}%)"
-                    )
-            elif prod_percent > 5:
-                recommendations.append(
-                    f"⚠️ Unnecessary {color} production ({prod_percent:.1f}%) "
-                    f"with no requirements"
-                )
-        
-        return recommendations
-
-    def _diagnose_color_balance(self, symbols_required: Dict, land_production: Dict) -> Dict:
-        """Analyze overall health of the mana base"""
-        total_symbols = sum(symbols_required.values())
-        total_production = sum(land_production.values())
-        
-        if not total_symbols:
-            return {
-                'status': 'UNKNOWN',
-                'message': 'No colored mana requirements found in deck'
-            }
-        
-        # Calculate color intensity
-        colors_used = [c for c, count in symbols_required.items() if count > 0]
-        color_requirements = {
-            color: count / total_symbols * 100 
-            for color, count in symbols_required.items()
-            if count > 0
-        }
-        
-        # Check if production matches requirements
-        mismatches = []
-        for color, req_percent in color_requirements.items():
-            prod_percent = (land_production.get(color, 0) / total_production * 100) if total_production else 0
-            ratio = prod_percent / req_percent if req_percent > 0 else 0
-            
-            if ratio < 0.8:
-                mismatches.append(f"{color} (needs {req_percent:.1f}%, has {prod_percent:.1f}%)")
-        
-        # Evaluate overall balance
-        if not mismatches:
-            if len(colors_used) == 1:
-                return {
-                    'status': 'EXCELLENT',
-                    'message': f'Mono-{colors_used[0]} deck with appropriate mana base'
-                }
-            else:
-                return {
-                    'status': 'GOOD',
-                    'message': f'Well-balanced {len(colors_used)}-color mana base'
-                }
-        elif len(mismatches) == 1:
-            return {
-                'status': 'FAIR',
-                'message': f'Generally good, but light on {mismatches[0]}'
-            }
-        else:
-            return {
-                'status': 'NEEDS WORK',
-                'message': f'Significant imbalances in: {", ".join(mismatches)}'
-            }
+        return dict(color_counts)
 
     def analyze_lands(self):
         """Analyze the lands in the deck."""
@@ -628,3 +504,25 @@ class Manalysis:
         except Exception as e:
             print(f"Error checking if card can be cast: {str(e)}")
             return False
+
+    def display_color_distribution(self, color_data: Dict):
+        """Display color distribution with error handling"""
+        if not color_data:
+            print("\nNo color data available - check database connection")
+            return
+        
+        try:
+            print("\nColor Distribution:")
+            print("-" * 40)
+            total = sum(color_data.values())
+            
+            if total == 0:
+                print("No colored cards found in deck")
+                return
+            
+            for color, count in sorted(color_data.items()):
+                percentage = (count / total) * 100
+                print(f"{color}: {count} ({percentage:.1f}%)")
+            
+        except Exception as e:
+            print(f"\nError displaying color distribution: {str(e)}")

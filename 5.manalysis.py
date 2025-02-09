@@ -4,110 +4,57 @@ Manalysis - Interactive tool for Magic: The Gathering mana analysis
 """
 
 from src.manalysis import DeckLoader, Manalysis
-from src import CardDatabase  # Import from src package directly
+from src.database.card_database import CardDatabase  # Updated import
 from typing import Dict
 from pathlib import Path
 
-def show_analysis_menu(analyzer, decklist):
-    """Show deck analysis"""
-    # Get analysis data
-    curve_data = analyzer.calculate_mana_curve()
-    color_data = analyzer.analyze_color_balance()
-    
-    # Calculate mana value statistics
-    total_cards = sum(analyzer.decklist.values())
-    total_mv = 0
-    total_mv_no_lands = 0
-    mv_list = []  # for median calculation
-    mv_list_no_lands = []  # for median without lands
-    
-    for card_name, quantity in analyzer.decklist.items():
-        card = analyzer.card_db.get_card(card_name)
-        mv = card.get('cmc', 0)
-        is_land = card.get('is_land', False)
+def show_analysis_menu(analyzer: Manalysis, decklist: Dict[str, int]):
+    """Display analysis menu and handle input"""
+    while True:
+        print("\nAnalysis Options:")
+        print("1. Show Mana Curve")
+        print("2. Show Color Distribution")
+        print("3. Analyze Mana Sources")
+        print("4. Simulate Opening Hands")
+        print("5. Check Casting Probabilities")
+        print("0. Return to Main Menu")
         
-        mv_list.extend([mv] * quantity)
-        total_mv += mv * quantity
+        choice = input("\nSelect an option (0-5): ")
         
-        if not is_land:
-            mv_list_no_lands.extend([mv] * quantity)
-            total_mv_no_lands += mv * quantity
-    
-    # Calculate averages
-    avg_mv = total_mv / len(mv_list) if mv_list else 0
-    avg_mv_no_lands = total_mv_no_lands / len(mv_list_no_lands) if mv_list_no_lands else 0
-    
-    # Calculate medians
-    mv_list.sort()
-    mv_list_no_lands.sort()
-    median_mv = mv_list[len(mv_list)//2] if mv_list else 0
-    median_mv_no_lands = mv_list_no_lands[len(mv_list_no_lands)//2] if mv_list_no_lands else 0
-    
-    # Print mana value statistics
-    print("\nMana Value Statistics:")
-    print("-" * 50)
-    print(f"The average mana value of your deck is {avg_mv:.2f} with lands and {avg_mv_no_lands:.2f} without lands.")
-    print(f"The median mana value of your deck is {median_mv} with lands and {median_mv_no_lands} without lands.")
-    print(f"This deck's total mana value is {total_mv}.")
-    
-    # Color Distribution
-    print("\nColor Distribution:")
-    print("-" * 50)
-    for color in 'WUBRG':
-        if color in color_data['color_stats']:
-            stats = color_data['color_stats'][color]
-            cards_of_color = sum(1 for card_name, qty in analyzer.decklist.items() 
-                               if not analyzer.card_db.get_card(card_name).get('is_land', False)
-                               and color in analyzer.card_db.get_card(card_name).get('color_identity', ''))
-            
-            print(f"\n{color} Color Statistics:")
-            print(f"- {cards_of_color} out of {total_cards - len(analyzer.lands)} non-land cards are {color}")
-            print(f"- {stats['symbols_in_costs']} out of {color_data['total_symbols']} mana symbols are {color}")
-            print(f"- {stats['producing_lands']} out of {len(analyzer.lands)} lands produce {color}")
-            print(f"- {stats['producing_lands']} out of {sum(s['producing_lands'] for s in color_data['color_stats'].values())} mana symbols on lands are {color}")
-    
-    # Continue with existing analysis...
-    print("\nMana Curve Analysis:")
-    print("-" * 50)
-    print(f"Average CMC: {curve_data['average_cmc']}")
-    print(f"Total non-land cards: {curve_data['total_cards']}")
-    print("\nDistribution:")
-    for cmc, count in sorted(curve_data['curve'].items()):
-        percentage = curve_data['distribution'][cmc]
-        print(f"CMC {cmc}: {count} cards ({percentage}%)")
-        print("█" * int(percentage/2))  # Visual bar
-    
-    # 2. Color Balance Analysis
-    print("\nColor Balance Analysis:")
-    print("-" * 50)
-    print(f"Total Cards: {color_data['total_cards']}")
-    print(f"Total Lands: {color_data['total_lands']}")
-    
-    if color_data['color_stats']:
-        print("\nColor Requirements vs Production:")
-        for color, stats in color_data['color_stats'].items():
-            print(f"\n{color}:")
-            print(f"  Required: {stats['required']:.1f}%")
-            print(f"  Produced: {stats['produced']:.1f}%")
-            print(f"  Sources: {stats['producing_lands']} lands")
-    
-    if color_data['mismatches']:
-        print("\nPotential Color Issues:")
-        for color in color_data['mismatches']:
-            stats = color_data['color_stats'][color]
-            print(f"  {color}: Required {stats['required']:.1f}% vs Produced {stats['produced']:.1f}%")
-    
-    # 3. Summary Statistics
-    print("\nSummary Statistics:")
-    print("-" * 50)
-    print(f"Total Cards: {sum(analyzer.decklist.values())}")
-    print(f"Non-land Cards: {curve_data['total_cards']}")
-    print(f"Lands: {len(analyzer.lands)}")
-    
-    print("\nMana Production:")
-    for color, sources in analyzer.mana_sources.items():
-        if sources:
-            print(f"{color}: {len(sources)} sources")
+        if choice == "0":
+            return
+        elif choice == "1":
+            curve = analyzer.calculate_mana_curve()
+            print("\nMana Value Statistics:")
+            print("-" * 40)
+            print(f"The average mana value of your deck is {curve['average_cmc']:.2f} with lands and "
+                  f"{curve['average_cmc_without_lands']:.2f} without lands.")
+            print(f"The median mana value of your deck is {curve['median_cmc']} with lands and "
+                  f"{curve['median_cmc_without_lands']} without lands.")
+            print(f"This deck's total mana value is {curve['total_mana_value']}.")
+        elif choice == "2":
+            color_data = analyzer.analyze_color_balance()  # Get color data
+            analyzer.display_color_distribution(color_data)  # Use the display method
+        elif choice == "3":
+            sources = analyzer.analyze_mana_sources()
+            print("\nMana Sources Analysis:")
+            print("-" * 40)
+            print(f"Total mana sources: {sources['total_sources']}")
+            print("Breakdown by color:")
+            for color, count in sources['breakdown']['by_color'].items():
+                print(f"{color}: {count}")
+        elif choice == "4":
+            num_sims = int(input("How many simulations? (100-10000): "))
+            results = analyzer.analyze_opening_hands(num_sims)
+            print(results['visualization'])
+        elif choice == "5":
+            num_sims = int(input("How many simulations? (100-1000): "))
+            results = analyzer.analyze_casting_sequence(num_sims)
+            print("\nCasting Probabilities:")
+            for card, prob in results['cast_probability'].items():
+                print(f"{card}: {prob*100:.1f}% chance to cast by turn 10")
+        else:
+            print("Invalid choice, please try again")
 
 def format_simulation_results(results: Dict) -> str:
     """Format simulation results for display"""
@@ -304,6 +251,7 @@ def main():
     # Initialize card database
     print("Loading card database...")
     card_db = CardDatabase()
+    loader = DeckLoader(card_db)
     if not card_db.db_path.exists():
         print("Error: Card database not found!")
         print("Please run '1.gather_data.py' first and select 'Build SQLite Database'")
@@ -390,27 +338,35 @@ def main():
                 for card, quantity in decklist.items():
                     print(f"{quantity}x {card}")
                 
-                # Ask to save the deck before doing anything else
+                # Ask to save the deck
                 save = input("\nWould you like to save this deck? (1=yes, 0=no): ").strip()
                 if save == '1':
                     while True:
                         name = input("Enter deck name: ").strip()
-                        if name:
+                        if not name:
+                            print("Please enter a valid name.")
+                            continue
+                            
+                        try:
                             if loader.save_deck(decklist, name):
                                 print(f"Deck saved as '{name}'")
                                 break
-                            else:
-                                print("Failed to save deck. Try a different name.")
-                        else:
-                            print("Please enter a valid name.")
-                
+                        except Exception as e:
+                            print(f"Error saving deck: {str(e)}")
+                            retry = input("Try again? (1=yes, 0=no): ").strip()
+                            if retry != '1':
+                                break
+                            
                 # Proceed with analysis regardless of save choice
-                analyzer = Manalysis(decklist, card_db)
-                analyzer.commander = loader.commander
-                show_analysis_menu(analyzer, decklist)
+                if decklist:
+                    analyzer = Manalysis(decklist, card_db)
+                    analyzer.commander = loader.commander
+                    show_analysis_menu(analyzer, decklist)
                 
             except Exception as e:
                 print(f"\nError: {str(e)}")
+                import traceback
+                traceback.print_exc()
                 continue
         elif choice == "3":
             loader = DeckLoader(card_db)
