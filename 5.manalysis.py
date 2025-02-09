@@ -7,14 +7,14 @@ from src.manalysis import DeckLoader, Manalysis
 from src.database.card_database import CardDatabase  # Updated import
 from typing import Dict
 from pathlib import Path
+from src.manalysis.analyzer import Manalysis as ManalysisAnalyzer
+from src.collectors.data_engine import DataEngine
 
-def show_analysis_menu(analyzer: Manalysis, decklist: Dict[str, int]):
+def show_analysis_menu(analyzer: ManalysisAnalyzer, decklist: Dict[str, int]):
     """Display analysis menu and handle input"""
     while True:
         print("\nAnalysis Options:")
         print("1. Show Mana Curve")
-        print("2. Show Color Distribution")
-        print("3. Analyze Mana Sources")
         print("4. Simulate Opening Hands")
         print("5. Check Casting Probabilities")
         print("0. Return to Main Menu")
@@ -27,22 +27,70 @@ def show_analysis_menu(analyzer: Manalysis, decklist: Dict[str, int]):
             curve = analyzer.calculate_mana_curve()
             print("\nMana Value Statistics:")
             print("-" * 40)
-            print(f"The average mana value of your deck is {curve['average_cmc']:.2f} with lands and "
-                  f"{curve['average_cmc_without_lands']:.2f} without lands.")
-            print(f"The median mana value of your deck is {curve['median_cmc']} with lands and "
-                  f"{curve['median_cmc_without_lands']} without lands.")
+            print(f"The average mana value of your deck is {curve['average_mana_value']:.2f} with lands and "
+                  f"{curve['average_mana_value_without_lands']:.2f} without lands.")
+            print(f"The median mana value of your deck is {curve['median_mana_value']} with lands and "
+                  f"{curve['median_mana_value_without_lands']} without lands.")
             print(f"This deck's total mana value is {curve['total_mana_value']}.")
-        elif choice == "2":
-            color_data = analyzer.analyze_color_balance()  # Get color data
-            analyzer.display_color_distribution(color_data)  # Use the display method
-        elif choice == "3":
-            sources = analyzer.analyze_mana_sources()
+            
+            # Add visualization
+            print("\nCard Count by Mana Value:")
+            print(f"{'-' * 40}")
+            print(curve['visualization'])
+            
+            # Add curve health analysis
+            print(f"\nCurve Health: {curve['curve_health']['status']}")
+            print(curve['curve_health']['message'])
+            print(f"Early game (0-2): {curve['curve_health']['distribution']['early_game']:.1f}%")
+            print(f"Mid game (3-5): {curve['curve_health']['distribution']['mid_game']:.1f}%")
+            print(f"Late game (6+): {curve['curve_health']['distribution']['late_game']:.1f}%")
+            
+            # Add detailed color statistics
+            color_stats = curve['color_stats']
+            print("\nDetailed Color Statistics:")
+            print("-" * 40)
+            print(f"Land cards: {color_stats['land_count']}")
+            print(f"Non-land cards: {color_stats['non_land_count']}")
+            
+            for color in ['W', 'U', 'B', 'R', 'G', 'C']:
+                print(f"\n{color}:")
+                print(f"  {color_stats['non_land_cards'][color]} out of {color_stats['non_land_count']} non-land cards are {{{color}}}")
+                print(f"  {color_stats['non_land_mana_symbols'][color]} out of {sum(color_stats['non_land_mana_symbols'].values())} mana symbols on non-land cards are {{{color}}}")
+                print(f"  {color_stats['land_produces'][color]} out of {color_stats['land_count']} land cards produce {{{color}}}")
+                print(f"  {color_stats['land_mana_symbols'][color]} out of {sum(color_stats['land_mana_symbols'].values())} mana symbols on lands produce {{{color}}}")
+            
+            # Add mana sources analysis
+            mana_sources = curve['mana_sources']
             print("\nMana Sources Analysis:")
             print("-" * 40)
-            print(f"Total mana sources: {sources['total_sources']}")
+            print(f"Total mana sources: {mana_sources['total_sources']}")
             print("Breakdown by color:")
-            for color, count in sources['breakdown']['by_color'].items():
+            for color, count in mana_sources['breakdown']['by_color'].items():
                 print(f"{color}: {count}")
+            
+            # Add mana rock and mana dork statistics
+            print("\nMana Rocks:")
+            if mana_sources['mana_rocks']:
+                for rock in mana_sources['mana_rocks']:
+                    print(f"  - {rock}")
+            else:
+                print("  No mana rocks found")
+            
+            print("\nMana Dorks:")
+            if mana_sources['mana_dorks']:
+                for dork in mana_sources['mana_dorks']:
+                    print(f"  - {dork}")
+            else:
+                print("  No mana dorks found")
+            
+            # Add mana discount analysis
+            mana_discounts = curve['mana_discounts']
+            print("\nMana Value Discounts:")
+            if mana_discounts:
+                for card_name, discount in mana_discounts.items():
+                    print(f"  - {card_name}: Original MV = {discount['original_mana_value']}, Reduced MV = {discount['reduced_mana_value']} ({discount['condition']})")
+            else:
+                print("  No mana value discounts found")
         elif choice == "4":
             num_sims = int(input("How many simulations? (100-10000): "))
             results = analyzer.analyze_opening_hands(num_sims)

@@ -22,7 +22,9 @@ class CardDatabase:
         # Initialize database
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
+        self.is_loaded = False  # Add is_loaded attribute
         self.create_tables()
+        self.load_data()  # Load data after initialization
         
     def create_tables(self):
         """Create necessary database tables if they don't exist"""
@@ -216,4 +218,25 @@ class CardDatabase:
         """Force close the database connection"""
         if self.conn:
             self.conn.close()
-            self.conn = None 
+            self.conn = None
+
+    def load_data(self):
+        """Load card data into the database"""
+        print(f"[DEBUG] Loading data into database: {self.db_path}")  # Debug
+        try:
+            # Check if the database is already populated
+            cursor = self.conn.execute("SELECT COUNT(*) FROM cards")
+            count = cursor.fetchone()[0]
+            if count > 0:
+                print(f"[DEBUG] Database already contains {count} cards")  # Debug
+                self.is_loaded = True
+                return
+            
+            # Load data from cache
+            print("[DEBUG] Loading data from cache...")  # Debug
+            self.load_from_cache()
+            self.is_loaded = True
+            print("[DEBUG] Database loaded successfully")  # Debug
+        except Exception as e:
+            print(f"[DEBUG] Error loading database: {str(e)}")  # Debug
+            self.is_loaded = False 

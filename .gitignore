@@ -49,3 +49,6 @@ mtg_crafter.egg-info/
 
 # New module cache
 src/search/__pycache__/
+/.cursor
+/.cursor
+.cursor/rules/.cursorrules

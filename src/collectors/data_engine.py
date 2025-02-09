@@ -1,9 +1,10 @@
 from datetime import datetime, timedelta
 from pathlib import Path
 import json
-from typing import Dict, Optional
+from typing import Dict, Optional, List
 import sys
 from os.path import dirname, abspath
+import time
 
 # Add src to Python path for imports
 root_dir = dirname(dirname(dirname(abspath(__file__))))
@@ -26,18 +27,31 @@ class DataEngine:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         
+        # Initialize database
+        self.database = CardDatabase(self.data_dir / "database" / "cards.db")
+        
+        # Initialize collectors
+        self.scryfall = ScryfallCollector(
+            cache_dir=str(self.cache_dir / "scryfall")
+        )
+        self.banlist = BanlistCollector(
+            cache_dir=str(self.cache_dir / "banlists"),
+            data_dir=str(self.data_dir / "banlists")
+        )
+        self.themes = ThemeCollector(
+            cache_dir=str(self.cache_dir / "themes"),
+            data_dir=str(self.data_dir / "themes")
+        )
+        self.keywords = KeywordCollector(
+            cache_dir=str(self.cache_dir / "keywords"),
+            data_dir=str(self.data_dir / "keywords")
+        )
+        
         # Engine metadata
         self.metadata_file = self.data_dir / "metadata.json"
         self.load_metadata()
         
-        # Initialize collectors without loading database
-        self.scryfall = None
-        self.database = None
-        self.banlist = None
-        self.themes = None
-        self.keywords = None
-        
-        if not light_init:
+        if True: # Always initialize collectors
             self._initialize_collectors()
     
     def _initialize_collectors(self):
@@ -48,7 +62,7 @@ class DataEngine:
                 cache_dir=str(self.cache_dir / "scryfall")
             )
             
-            self.database = CardDatabase()
+            self.database = CardDatabase(str(self.data_dir / "cards.json"))
             
             self.banlist = BanlistCollector(
                 cache_dir=str(self.cache_dir / "banlists"),
@@ -86,8 +100,14 @@ class DataEngine:
         }
         
         if self.metadata_file.exists():
-            with open(self.metadata_file, 'r') as f:
-                self.metadata = json.load(f)
+            try:
+                with open(self.metadata_file, 'r') as f:
+                    self.metadata = json.load(f)
+            except (json.JSONDecodeError, FileNotFoundError) as e:
+                print(f"Error loading metadata: {e}. Using default metadata.")
+                self.metadata = default_metadata
+                self.save_metadata()
+                return
                 
             # Ensure all required keys exist
             for section in default_metadata:
@@ -107,51 +127,83 @@ class DataEngine:
         with open(self.metadata_file, 'w') as f:
             json.dump(self.metadata, f, indent=2)
     
-    def _has_card_cache(self) -> bool:
-        """Check if we have a valid cached card data"""
-        cache_files = {
-            'bulk_data': self.cache_dir / "scryfall/bulk_cards_cache.json",
-            'metadata': self.cache_dir / "scryfall/bulk_cache_metadata.json"
-        }
-        
-        for path in cache_files.values():
-            if not path.exists():
-                return False
-            try:
-                # Validate JSON format and basic structure
-                with open(path, 'r', encoding='utf-8') as f:
-                    data = json.load(f)
+    def _validate_cache_file(self, path: Path, required_fields: List[str] = None, is_list: bool = False) -> bool:
+        """Validate a cache file for JSON format and required fields"""
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                
+                # Handle both list and dictionary structures
+                if is_list:
+                    if not isinstance(data, (list, dict)):
+                        print(f"Invalid cache structure in {path.name}: Expected list or dict")
+                        return False
                     
-                    # Validate bulk data structure
-                    if path.name == "bulk_cards_cache.json":
-                        if not isinstance(data, list):
-                            print(f"Invalid cache structure in {path.name}: Expected list of cards")
-                            return False
-                        if not data:  # Empty list
-                            print(f"Empty card data in {path.name}")
-                            return False
-                        # Check first card has required fields
-                        required_fields = ['name', 'id', 'oracle_id']
+                    # If it's a dictionary, check if it has a 'data' key
+                    if isinstance(data, dict) and 'data' in data:
+                        data = data['data']
+                    
+                    if not isinstance(data, list):
+                        print(f"Invalid cache structure in {path.name}: Expected list")
+                        return False
+                
+                if required_fields:
+                    # Check required fields in the first item if it's a list
+                    if is_list and data:
                         if not all(field in data[0] for field in required_fields):
                             print(f"Missing required fields in {path.name}")
                             return False
-                    
-                    # Validate metadata structure
-                    if path.name == "bulk_cache_metadata.json":
-                        required_fields = ['downloaded_at', 'last_updated', 'card_count']
-                        if not all(field in data for field in required_fields):
-                            print(f"Missing required metadata fields in {path.name}")
-                            return False
-                    
-            except json.JSONDecodeError as e:
-                print(f"Invalid JSON in {path.name}: {str(e)}")
-                return False
-            except Exception as e:
-                print(f"Error validating {path.name}: {str(e)}")
+                    # Check required fields directly if it's a dictionary
+                    elif not is_list and not all(field in data for field in required_fields):
+                        print(f"Missing required fields in {path.name}")
+                        return False
+                
+                return True
+                
+        except (json.JSONDecodeError, FileNotFoundError) as e:
+            print(f"Invalid JSON in {path.name}: {str(e)}")
+            return False
+        except Exception as e:
+            print(f"Error validating {path.name}: {str(e)}")
+            return False
+
+    def _has_card_cache(self) -> bool:
+        """Check if we have a valid cached card data"""
+        cache_files = {
+            'sets': (self.cache_dir / "scryfall/sets_catalog.json", ['code', 'name'], True),
+            'cards': (self.cache_dir / "scryfall/all_cards.json", ['name', 'scryfall_uri'], True)
+        }
+        
+        return all(self._validate_cache_file(path, required_fields, is_list) for path, required_fields, is_list in cache_files.values())
+    
+    def _download_data(self, collector_type: str) -> bool:
+        """Download data for a specific collector"""
+        try:
+            if collector_type == 'banlists':
+                print("\nDownloading banlists...")
+                success = self.banlist.fetch_banned_cards()
+            elif collector_type == 'rules':
+                print("\nDownloading rules...")
+                success = self.keywords.download_rules()
+            elif collector_type == 'themes':
+                print("\nDownloading themes...")
+                success = self.themes.update_all()
+            else:
+                print(f"Invalid collector type: {collector_type}")
                 return False
             
-        return True
-    
+            if success:
+                self.metadata['last_updates'][collector_type] = datetime.now().isoformat()
+                print(f"{collector_type.capitalize()} downloaded successfully")
+                return True
+            else:
+                print(f"Failed to download {collector_type}")
+                return False
+            
+        except Exception as e:
+            print(f"Warning: Failed to download {collector_type}: {e}")
+            return False
+
     def cold_start(self, force_download: bool = False):
         """Initialize all data collections in stages"""
         print("Starting MTG Crafter data engine...")
@@ -169,35 +221,8 @@ class DataEngine:
         # Stage 2: Additional Data Collection
         print("\n=== Stage 2: Additional Data Collection ===")
         
-        print("\n1. Downloading banlists...")
-        try:
-            if self.banlist.fetch_banned_cards():
-                print("Banlists downloaded successfully")
-                self.metadata['last_updates']['banlists'] = datetime.now().isoformat()
-            else:
-                print("Failed to download banlists")
-        except Exception as e:
-            print(f"Warning: Failed to download banlists: {e}")
-        
-        print("\n2. Downloading rules...")
-        try:
-            if self.keywords.download_rules():
-                print("Rules downloaded successfully")
-                self.metadata['last_updates']['rules'] = datetime.now().isoformat()
-            else:
-                print("Failed to download rules")
-        except Exception as e:
-            print(f"Warning: Failed to download rules: {e}")
-        
-        print("\n3. Downloading themes...")
-        try:
-            if self.themes.update_all():
-                print("Themes downloaded successfully")
-                self.metadata['last_updates']['themes'] = datetime.now().isoformat()
-            else:
-                print("Failed to download themes")
-        except Exception as e:
-            print(f"Warning: Failed to download themes: {e}")
+        for collector_type in ['banlists', 'rules', 'themes']:
+            self._download_data(collector_type)
         
         self.save_metadata()
         print("\nData engine initialization complete!")
@@ -235,29 +260,8 @@ class DataEngine:
             if collector_type == 'sets':
                 print("\nUpdating card data...")
                 return self.scryfall.fetch_all_cards(force_download=force)
-                
-            elif collector_type == 'banlists':
-                print("\nUpdating banlists...")
-                success = self.banlist.fetch_banned_cards()
-                if success:
-                    self.metadata['last_updates']['banlists'] = datetime.now().isoformat()
-                return success
-                
-            elif collector_type == 'themes':
-                print("\nUpdating theme data...")
-                success = self.themes.update_all()
-                if success:
-                    self.metadata['last_updates']['themes'] = datetime.now().isoformat()
-                return success
-                
-            elif collector_type == 'rules':
-                print("\nUpdating rules data...")
-                success = self.keywords.download_rules()
-                if success:
-                    self.metadata['last_updates']['rules'] = datetime.now().isoformat()
-                return success
-                
-            return False
+            else:
+                return self._download_data(collector_type)
             
         except Exception as e:
             print(f"Error updating {collector_type}: {e}")
@@ -291,9 +295,55 @@ class DataEngine:
     def cleanup(self):
         """Close all connections and clean up resources"""
         if self.database:
-            self.database.force_close()
+            try:
+                self.database.force_close()
+            except Exception as e:
+                print(f"Error closing database: {e}")
         if hasattr(self, "conn"):
             self.conn = None
+
+class CardDatabase:
+    """Card database to load and search card information"""
+    def __init__(self, json_file_path: str):
+        print(f"[DEBUG] Initializing CardDatabase with path: {json_file_path}")  # Debug
+        self.json_file_path = json_file_path
+        self.cards = {}
+        self.is_loaded = False  # Initialize is_loaded attribute
+        self.load_data()
+    
+    def load_data(self):
+        """Load card data from JSON file"""
+        print(f"[DEBUG] Loading data from: {self.json_file_path}")  # Debug
+        try:
+            with open(self.json_file_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                self.cards = {card['name']: card for card in data}
+                self.is_loaded = True  # Set is_loaded to True if successful
+                print(f"[DEBUG] Loaded {len(self.cards)} cards from {self.json_file_path}")  # Debug
+        except FileNotFoundError:
+            print(f"[DEBUG] Error: Card database file not found at {self.json_file_path}")  # Debug
+            self.is_loaded = False  # Set is_loaded to False if file not found
+        except json.JSONDecodeError:
+            print(f"[DEBUG] Error: Could not decode JSON from {self.json_file_path}")  # Debug
+            self.is_loaded = False  # Set is_loaded to False if JSON decode fails
+        except Exception as e:
+            print(f"[DEBUG] Error loading card database: {str(e)}")  # Debug
+            self.is_loaded = False  # Set is_loaded to False for any other errors
+    
+    def get_card(self, card_name: str) -> Dict:
+        """Get card information by name"""
+        return self.cards.get(card_name)
+    
+    def needs_update(self, cache_dir: Path) -> bool:
+        """Check if the database needs updating based on cache files"""
+        # Check if the cache directory exists and has the necessary files
+        if not cache_dir.exists():
+            return True
+        return False
+    
+    def close(self):
+        """Close the database connection"""
+        pass  # No connection to close in this implementation
 
 if __name__ == "__main__":
     engine = DataEngine()
