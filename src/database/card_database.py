@@ -8,7 +8,7 @@ from datetime import datetime
 class CardDatabase:
     """SQLite database for card information"""
     
-    def __init__(self, data_dir: str):
+    def __init__(self, data_dir: str = "data"):
         self.data_dir = Path(data_dir)
         
         # Set the database path
