@@ -79,15 +79,20 @@ class Manalysis:
                         self.mana_sources[color].append(card_name)
     
     def calculate_mana_curve(self) -> Dict:
-        """Calculate detailed mana curve statistics"""
+        """Calculate detailed mana curve statistics, including pre- and post-discount analysis"""
         try:
             curve_data = defaultdict(int)
             total_cards = 0
             total_mana = 0
             total_mana_without_lands = 0
+            total_mana_with_discounts = 0  # New: Total mana value with discounts
             mana_value_values = []
             mana_value_values_without_lands = []
             
+            # First, calculate discounts
+            discounts = self.analyze_mana_discounts()
+            
+            # Pre-discount analysis
             for card_name, quantity in self.decklist.items():
                 card = self._get_card_info(card_name)
                 if not card:
@@ -107,9 +112,25 @@ class Manalysis:
                     total_mana_without_lands += mana_value * quantity
                     mana_value_values_without_lands.extend([mana_value] * quantity)
             
+            # Post-discount analysis
+            for card_name, quantity in self.decklist.items():
+                card = self._get_card_info(card_name)
+                if not card:
+                    continue
+                
+                mana_value = card.get('mana_value', 0)
+                
+                # Apply discount if available
+                if card_name in discounts:
+                    discounted_mana_value = discounts[card_name]['reduced_mana_value']
+                    total_mana_with_discounts += discounted_mana_value * quantity
+                else:
+                    total_mana_with_discounts += mana_value * quantity
+            
             # Calculate averages
             avg_mana_value = total_mana / total_cards if total_cards else 0
             avg_mana_value_without_lands = total_mana_without_lands / len(mana_value_values_without_lands) if mana_value_values_without_lands else 0
+            avg_mana_value_with_discounts = total_mana_with_discounts / total_cards if total_cards else 0  # New: Average with discounts
             
             # Calculate medians
             mana_value_values.sort()
@@ -136,16 +157,15 @@ class Manalysis:
             # Analyze mana sources
             mana_sources = self.analyze_mana_sources()
             
-            # Analyze mana discounts
-            mana_discounts = self.analyze_mana_discounts()
-            
             return {
                 'curve': dict(curve_data),
                 'average_mana_value': round(avg_mana_value, 2),
                 'average_mana_value_without_lands': round(avg_mana_value_without_lands, 2),
+                'average_mana_value_with_discounts': round(avg_mana_value_with_discounts, 2),  # New: Average with discounts
                 'median_mana_value': median_mana_value,
                 'median_mana_value_without_lands': median_mana_value_without_lands,
                 'total_mana_value': total_mana,
+                'total_mana_value_with_discounts': total_mana_with_discounts,  # New: Total with discounts
                 'total_cards': total_cards,
                 'distribution': distribution,
                 'curve_health': {
@@ -156,7 +176,7 @@ class Manalysis:
                 'visualization': visualization,
                 'color_stats': color_stats,
                 'mana_sources': mana_sources,
-                'mana_discounts': mana_discounts
+                'mana_discounts': discounts
             }
         except Exception as e:
             print(f"Error calculating mana curve: {str(e)}")
@@ -448,8 +468,8 @@ class Manalysis:
                     'W': 0, 'U': 0, 'B': 0, 'R': 0, 'G': 0, 'C': 0
                 }
             },
-            'mana_rocks': [],
-            'mana_dorks': []
+            'mana_rocks': [],  # List of dicts: {name, produces_mana}
+            'mana_dorks': []   # List of dicts: {name, produces_mana}
         }
         
         for card_name, quantity in self.decklist.items():
@@ -461,11 +481,17 @@ class Manalysis:
             
             # Check for mana rocks
             if card.get('is_mana_rock'):
-                mana_sources['mana_rocks'].extend([card_name] * quantity)
+                mana_sources['mana_rocks'].append({
+                    'name': card_name,
+                    'produces_mana': produces_mana
+                })
             
             # Check for mana dorks (creatures that produce mana)
             if 'creature' in card.get('type_line', '').lower() and produces_mana:
-                mana_sources['mana_dorks'].extend([card_name] * quantity)
+                mana_sources['mana_dorks'].append({
+                    'name': card_name,
+                    'produces_mana': produces_mana
+                })
             
             for color in produces_mana:
                 if color in mana_sources['breakdown']['by_color']:

@@ -3,7 +3,9 @@
 Manalysis - Interactive tool for Magic: The Gathering mana analysis
 """
 
-from src.manalysis import DeckLoader, Manalysis
+from src.manalysis.cli import main as manalysis_main
+from src.manalysis.deck_loader import DeckLoader
+from src.manalysis.analyzer import Manalysis
 from src.database.card_database import CardDatabase  # Updated import
 from typing import Dict
 from pathlib import Path
@@ -72,14 +74,16 @@ def show_analysis_menu(analyzer: ManalysisAnalyzer, decklist: Dict[str, int]):
             print("\nMana Rocks:")
             if mana_sources['mana_rocks']:
                 for rock in mana_sources['mana_rocks']:
-                    print(f"  - {rock}")
+                    produces = ', '.join(rock['produces_mana']) or 'No mana'
+                    print(f"  - {rock['name']}: Produces {{{produces}}}")
             else:
                 print("  No mana rocks found")
             
             print("\nMana Dorks:")
             if mana_sources['mana_dorks']:
                 for dork in mana_sources['mana_dorks']:
-                    print(f"  - {dork}")
+                    produces = ', '.join(dork['produces_mana']) or 'No mana'
+                    print(f"  - {dork['name']}: Produces {{{produces}}}")
             else:
                 print("  No mana dorks found")
             

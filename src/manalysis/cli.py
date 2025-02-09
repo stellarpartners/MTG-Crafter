@@ -1,6 +1,7 @@
 import argparse
 from .deck_loader import DeckLoader
 from .analyzer import Manalysis
+from ..collectors.data_engine import DataEngine
 
 def main():
     parser = argparse.ArgumentParser(description='Manalysis - MTG deck mana analysis tool')
@@ -40,6 +41,23 @@ def main():
     sim_results = analyzer.simulate_opening_hand(args.simulations)
     print("\nOpening Hand Analysis:")
     print(sim_results)
+
+    # In the mana rocks/dorks section:
+    print("\nMana Rocks:")
+    if analyzer.mana_sources['mana_rocks']:
+        for rock in analyzer.mana_sources['mana_rocks']:
+            produces = ', '.join(rock['produces_mana']) or 'No mana'
+            print(f"  - {rock['name']}: Produces {{{produces}}}")
+    else:
+        print("  No mana rocks found")
+
+    print("\nMana Dorks:")
+    if analyzer.mana_sources['mana_dorks']:
+        for dork in analyzer.mana_sources['mana_dorks']:
+            produces = ', '.join(dork['produces_mana']) or 'No mana'
+            print(f"  - {dork['name']}: Produces {{{produces}}}")
+    else:
+        print("  No mana dorks found")
 
 if __name__ == '__main__':
     main() 

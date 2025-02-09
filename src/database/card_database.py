@@ -193,10 +193,12 @@ class CardDatabase:
                         'oracle_text': row[3],
                         'color_identity': json.loads(row[4]) if row[4] else [],
                         'mana_cost': row[5],
-                        'produces_mana': row[6].split(',') if row[6] else [],
-                        'is_land': bool(row[7])
+                        'produces_mana': row[6].split(',') if row[6] else [],  # Ensure produces_mana is a list
+                        'is_land': bool(row[7]),
+                        'is_mana_rock': 'artifact' in row[2].lower() and row[6]  # Add is_mana_rock field
                     }
-                return None
+                else:
+                    return None
                 
         except Exception as e:
             print(f"Error retrieving card: {e}")
