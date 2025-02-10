@@ -6,11 +6,11 @@ Manalysis - Interactive tool for Magic: The Gathering mana analysis
 from src.manalysis.cli import main as manalysis_main
 from src.manalysis.deck_loader import DeckLoader
 from src.manalysis.analyzer import Manalysis
-from src.database.card_database import CardDatabase  # Updated import
+from src.database.card_database import CardDatabase
+from src.collectors.data_engine import DataEngine
 from typing import Dict
 from pathlib import Path
 from src.manalysis.analyzer import Manalysis as ManalysisAnalyzer
-from src.collectors.data_engine import DataEngine
 
 def show_analysis_menu(analyzer: ManalysisAnalyzer, decklist: Dict[str, int]):
     """Display analysis menu and handle input"""
@@ -303,11 +303,20 @@ def main():
     # Initialize card database
     print("Loading card database...")
     card_db = CardDatabase()
-    loader = DeckLoader(card_db)
+    
+    # Check if database exists and has data
     if not card_db.db_path.exists():
         print("Error: Card database not found!")
         print("Please run '1.gather_data.py' first and select 'Build SQLite Database'")
         return
+        
+    cursor = card_db.conn.execute("SELECT COUNT(*) FROM cards")
+    if cursor.fetchone()[0] == 0:
+        print("Error: Database is empty!")
+        print("Please run '1.gather_data.py' first to populate the database")
+        return
+
+    loader = DeckLoader(card_db)
     print("Card database ready!")
     
     while True:

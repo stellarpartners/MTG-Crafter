@@ -1,7 +1,9 @@
 import argparse
 from .deck_loader import DeckLoader
 from .analyzer import Manalysis
-from ..collectors.data_engine import DataEngine
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from ..collectors.data_engine import DataEngine
 
 def main():
     parser = argparse.ArgumentParser(description='Manalysis - MTG deck mana analysis tool')

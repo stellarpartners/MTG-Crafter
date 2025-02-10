@@ -3,7 +3,7 @@ from typing import List, Dict, Set
 import random
 from collections import defaultdict
 import re
-from src.collectors.data_engine import CardDatabase
+from src.database.card_database import CardDatabase
 
 @dataclass
 class GameState:
@@ -32,15 +32,15 @@ class Manalysis:
             decklist: Dictionary mapping card names to quantities
             card_db: CardDatabase object
         """
-        print(f"[DEBUG] Initializing Manalysis with card_db: {card_db}")  # Debug
+        print(f"[DEBUG] Initializing Manalysis with card_db: {card_db}") 
         self.decklist = decklist
         self.card_db = card_db
         if not self.card_db.is_loaded:
-            print(f"[DEBUG] Card database not loaded. Path: {self.card_db.json_file_path}")  # Debug
-            print("Card database not found, please run 1.gather_data.py to create it")
+            print("Card database not loaded. Path:", self.card_db.db_path)
+            print("Please run '1.gather_data.py' to create the database")
             self.card_db = None
         else:
-            print("[DEBUG] Card database loaded successfully")  # Debug
+            print("[DEBUG] Card database loaded successfully")
         
         self.lands = self._find_lands()
         self.mana_sources = {

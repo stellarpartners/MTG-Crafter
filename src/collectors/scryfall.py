@@ -3,11 +3,12 @@ import json
 import requests
 from datetime import datetime
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TYPE_CHECKING
 from tqdm import tqdm
 from collections import defaultdict
 
-from src.database.card_database import CardDatabase
+if TYPE_CHECKING:
+    from src.collectors.data_engine import DataEngine
 
 class ScryfallCollector:
     """Handles data collection from Scryfall API"""
@@ -23,6 +24,7 @@ class ScryfallCollector:
         self.sets_dir = self.cache_dir / "sets"
         
         # Create necessary directories
+        print(f"Creating cache directory: {self.cache_dir}")
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.sets_dir.mkdir(parents=True, exist_ok=True)
         
@@ -122,57 +124,21 @@ class ScryfallCollector:
         else:
             print("No metadata file found")
     
-    def fetch_all_cards(self, force_download: bool = False, debug: bool = False) -> bool:
-        """Download cards by set with smart caching"""
-        print("\nChecking card data...")
+    def fetch_all_cards(self, force_download: bool = False) -> bool:
+        """Fetch all cards while handling rate limits"""
+        try:
+            # Simplified set processing
+            sets_data = self._get_available_sets()
+            for set_data in tqdm(sets_data, desc="Processing sets"):
+                self._process_set(set_data, force_download)
+            
+            self.metadata['last_update'] = datetime.now().isoformat()
+            self.save_metadata()
+            return True
         
-        # First get sets catalog
-        sets_data = self._fetch_sets_catalog(force_download)
-        if not sets_data:
+        except Exception as e:
+            print(f"Fatal error: {e}")
             return False
-        
-        # Get list of all available sets
-        available_sets = {
-            set_data['code']: set_data 
-            for set_data in self._filter_sets(sets_data['data'])
-        }
-        
-        # Get list of what we have
-        cached_sets = set()
-        for set_file in self.sets_dir.glob("*.json"):
-            cached_sets.add(set_file.stem)
-        
-        # Find missing sets
-        missing_sets = set(available_sets.keys()) - cached_sets
-        
-        # Show status
-        print("\nCache Status:")
-        print(f"- Available sets: {len(available_sets)}")
-        print(f"- Sets in cache: {len(cached_sets)}")
-        print(f"- Missing sets: {len(missing_sets)}")
-        
-        if missing_sets:
-            print("\nMissing sets:")
-            for set_code in sorted(missing_sets):
-                set_data = available_sets[set_code]
-                print(f"- {set_data['name']} ({set_code}) - Released: {set_data['released_at']}")
-            
-            # Confirm download
-            if not force_download:
-                confirm = input("\nDownload missing sets? (Y/n): ")
-                if confirm.lower() == 'n':
-                    return False
-            
-            # Download only missing sets
-            success = True
-            for set_code in missing_sets:
-                if not self._fetch_set(set_code, available_sets[set_code]):
-                    success = False
-            
-            return success
-        
-        print("\nAll sets are cached!")
-        return True
     
     def _fetch_sets_catalog(self, force: bool = False) -> Dict:
         """Get list of all sets from Scryfall"""

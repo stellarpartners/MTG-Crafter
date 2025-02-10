@@ -1,3 +1,7 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .scryfall import ScryfallCollector
 from datetime import datetime, timedelta
 from pathlib import Path
 import json
@@ -11,10 +15,10 @@ root_dir = dirname(dirname(dirname(abspath(__file__))))
 sys.path.append(root_dir)
 
 # Change relative imports to absolute
-from src.collectors.scryfall import ScryfallCollector
-from src.collectors.banlist_collector import BanlistCollector
-from src.collectors.theme_collectors import ThemeCollector
-from src.collectors.keyword_collector import KeywordCollector
+from .scryfall import ScryfallCollector
+from .banlist_collector import BanlistCollector
+from .theme_collectors import ThemeCollector
+from .keyword_collector import KeywordCollector
 from src.database.card_database import CardDatabase
 
 class DataEngine:
@@ -27,8 +31,8 @@ class DataEngine:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         
-        # Initialize database
-        self.database = CardDatabase(self.data_dir / "database" / "cards.db")
+        # Use SQLite database path
+        self.database = CardDatabase(str(self.data_dir / "database" / "cards.db"))
         
         # Initialize collectors
         self.scryfall = ScryfallCollector(
@@ -61,8 +65,6 @@ class DataEngine:
             self.scryfall = ScryfallCollector(
                 cache_dir=str(self.cache_dir / "scryfall")
             )
-            
-            self.database = CardDatabase(str(self.data_dir / "cards.json"))
             
             self.banlist = BanlistCollector(
                 cache_dir=str(self.cache_dir / "banlists"),
@@ -168,13 +170,10 @@ class DataEngine:
             return False
 
     def _has_card_cache(self) -> bool:
-        """Check if we have a valid cached card data"""
-        cache_files = {
-            'sets': (self.cache_dir / "scryfall/sets_catalog.json", ['code', 'name'], True),
-            'cards': (self.cache_dir / "scryfall/all_cards.json", ['name', 'scryfall_uri'], True)
-        }
-        
-        return all(self._validate_cache_file(path, required_fields, is_list) for path, required_fields, is_list in cache_files.values())
+        """Check if we have valid cached card data"""
+        # Simplify to just check sets catalog
+        catalog_path = self.cache_dir / "scryfall/sets_catalog.json"
+        return catalog_path.exists()
     
     def _download_data(self, collector_type: str) -> bool:
         """Download data for a specific collector"""
@@ -204,29 +203,24 @@ class DataEngine:
             print(f"Warning: Failed to download {collector_type}: {e}")
             return False
 
-    def cold_start(self, force_download: bool = False):
-        """Initialize all data collections in stages"""
-        print("Starting MTG Crafter data engine...")
+    def cold_start(self):
+        """Fresh initialization sequence"""
+        print("=== Cold Start Initialization ===")
         
-        # Stage 1: Card Data Download
-        print("\n=== Stage 1: Card Data Download ===")
-        print("\n1. Downloading card data from Scryfall...")
-        self.scryfall = ScryfallCollector(
-            cache_dir=str(self.cache_dir / "scryfall")
-        )
-        if not self.scryfall.fetch_all_cards(force_download=force_download):
-            print("Failed to download card data!")
-            return False
+        # Phase 1: Core card data
+        print("\n1. Downloading card data...")
+        self.scryfall.fetch_all_cards(force_download=True)
         
-        # Stage 2: Additional Data Collection
-        print("\n=== Stage 2: Additional Data Collection ===")
+        # Phase 2: Database population 
+        print("\n2. Building database...")
+        self.database = CardDatabase()  # Creates fresh instance
         
-        for collector_type in ['banlists', 'rules', 'themes']:
-            self._download_data(collector_type)
+        # Phase 3: Supplemental data
+        print("\n3. Collecting supplemental data...")
+        for collector in [self.banlist, self.themes, self.keywords]:
+            collector.update()
         
-        self.save_metadata()
-        print("\nData engine initialization complete!")
-        return True
+        print("\nSystem ready!")
 
     def needs_update(self, collector_type: str) -> bool:
         """Check if a collector needs updating"""
@@ -301,49 +295,6 @@ class DataEngine:
                 print(f"Error closing database: {e}")
         if hasattr(self, "conn"):
             self.conn = None
-
-class CardDatabase:
-    """Card database to load and search card information"""
-    def __init__(self, json_file_path: str):
-        print(f"[DEBUG] Initializing CardDatabase with path: {json_file_path}")  # Debug
-        self.json_file_path = json_file_path
-        self.cards = {}
-        self.is_loaded = False  # Initialize is_loaded attribute
-        self.load_data()
-    
-    def load_data(self):
-        """Load card data from JSON file"""
-        print(f"[DEBUG] Loading data from: {self.json_file_path}")  # Debug
-        try:
-            with open(self.json_file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                self.cards = {card['name']: card for card in data}
-                self.is_loaded = True  # Set is_loaded to True if successful
-                print(f"[DEBUG] Loaded {len(self.cards)} cards from {self.json_file_path}")  # Debug
-        except FileNotFoundError:
-            print(f"[DEBUG] Error: Card database file not found at {self.json_file_path}")  # Debug
-            self.is_loaded = False  # Set is_loaded to False if file not found
-        except json.JSONDecodeError:
-            print(f"[DEBUG] Error: Could not decode JSON from {self.json_file_path}")  # Debug
-            self.is_loaded = False  # Set is_loaded to False if JSON decode fails
-        except Exception as e:
-            print(f"[DEBUG] Error loading card database: {str(e)}")  # Debug
-            self.is_loaded = False  # Set is_loaded to False for any other errors
-    
-    def get_card(self, card_name: str) -> Dict:
-        """Get card information by name"""
-        return self.cards.get(card_name)
-    
-    def needs_update(self, cache_dir: Path) -> bool:
-        """Check if the database needs updating based on cache files"""
-        # Check if the cache directory exists and has the necessary files
-        if not cache_dir.exists():
-            return True
-        return False
-    
-    def close(self):
-        """Close the database connection"""
-        pass  # No connection to close in this implementation
 
 if __name__ == "__main__":
     engine = DataEngine()
