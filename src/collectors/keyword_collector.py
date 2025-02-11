@@ -259,6 +259,10 @@ class KeywordCollector:
             print(f"Error downloading rules: {e}")
             return False
 
+    def update(self):
+        """Public update method"""
+        return self.download_rules()
+
 if __name__ == "__main__":
     collector = KeywordCollector()
     

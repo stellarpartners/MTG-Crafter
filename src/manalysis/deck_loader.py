@@ -4,18 +4,18 @@ import re
 from pathlib import Path
 import json
 from datetime import datetime
+from src.database.card_database import CardDatabase
 from .models import Card, ManaCost
 
 class DeckLoader:
     """Handles importing and saving decks"""
     
-    def __init__(self, card_db):
+    def __init__(self, card_db: CardDatabase):
         """Initialize loader with card database"""
         self.card_db = card_db
+        self.deck_dir = Path("saved_decks")
+        self.deck_dir.mkdir(exist_ok=True)
         self.commander = None
-        # Define deck storage location relative to project root
-        self.deck_dir = Path("data/decks")
-        self.deck_dir.mkdir(parents=True, exist_ok=True)
 
     def load_from_clipboard(self) -> Dict[str, int]:
         """Load deck from clipboard text"""
@@ -77,10 +77,11 @@ class DeckLoader:
                     card_name = self._clean_card_name(match.group(2))
                     
                     # Validate card exists in database
-                    if self.card_db.get_card(card_name):
+                    card = self.card_db.get_card(card_name)
+                    if card:
                         deck[card_name] = quantity
                     else:
-                        print(f"Warning: Card not found in database: {card_name}")
+                        print(f"Warning: Card not found: {card_name}")
             except (ValueError, IndexError):
                 print(f"Warning: Couldn't parse line: {line}")
                 continue
@@ -164,28 +165,19 @@ class DeckLoader:
             return False
     
     def list_saved_decks(self) -> List[Dict]:
-        """List all saved decks with their metadata"""
+        """List all saved decks with metadata"""
         decks = []
-        
-        if not self.deck_dir.exists():
-            self.deck_dir.mkdir(parents=True, exist_ok=True)
-            return decks
-        
-        json_files = list(self.deck_dir.glob("*.json"))
-        for deck_file in json_files:
+        for deck_file in self.deck_dir.glob("*.json"):
             try:
-                with open(deck_file, 'r', encoding='utf-8') as f:
-                    deck_data = json.load(f)
+                with open(deck_file, 'r') as f:
+                    data = json.load(f)
                     decks.append({
-                        'name': deck_data.get('name', deck_file.stem),
-                        'commander': deck_data.get('commander', 'Unknown'),
-                        'total_cards': sum(deck_data.get('cards', {}).values()),
-                        'manalysis': deck_data.get('manalysis', None)
+                        'id': deck_file.stem,
+                        'name': data.get('name', deck_file.stem),
+                        'commander': data.get('commander', 'Unknown')
                     })
             except Exception as e:
-                print(f"Warning: Could not load {deck_file}: {str(e)}")
-                continue
-        
+                print(f"Error reading {deck_file}: {str(e)}")
         return decks
     
     def load_saved_deck_with_data(self, deck_identifier: str) -> Dict:
@@ -319,4 +311,15 @@ class DeckLoader:
             return True
         except Exception as e:
             print(f"Error saving analysis: {str(e)}")
-            return False 
+            return False
+
+    def load_deck(self, deck_id: str) -> Dict[str, int]:
+        """Load a saved deck by ID (filename)"""
+        deck_file = self.deck_dir / f"{deck_id}.json"
+        try:
+            with open(deck_file, 'r') as f:
+                data = json.load(f)
+                return data.get('cards', {})
+        except Exception as e:
+            print(f"Error loading deck: {str(e)}")
+            return {} 

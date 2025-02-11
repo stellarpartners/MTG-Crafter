@@ -39,6 +39,10 @@ class ThemeCollector:
         self.edhrec.update_themes()
         # Add other collectors as they become available
 
+    def update(self):
+        """Public update method"""
+        return self.update_all()
+
 if __name__ == "__main__":
     collector = ThemeCollector()
     collector.update_all() 

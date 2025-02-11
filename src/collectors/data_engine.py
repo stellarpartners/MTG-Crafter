@@ -31,8 +31,10 @@ class DataEngine:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.data_dir.mkdir(parents=True, exist_ok=True)
         
-        # Use SQLite database path
-        self.database = CardDatabase(str(self.data_dir / "database" / "cards.db"))
+        # Create database
+        print("Initializing database...")
+        self.database = CardDatabase()
+        print(f"DataEngine: CardDatabase object ID: {id(self.database)}")
         
         # Initialize collectors
         self.scryfall = ScryfallCollector(
@@ -207,18 +209,22 @@ class DataEngine:
         """Fresh initialization sequence"""
         print("=== Cold Start Initialization ===")
         
-        # Phase 1: Core card data
-        print("\n1. Downloading card data...")
-        self.scryfall.fetch_all_cards(force_download=True)
-        
-        # Phase 2: Database population 
-        print("\n2. Building database...")
+        # Phase 1: Database population 
+        print("\n1. Building database...")
         self.database = CardDatabase()  # Creates fresh instance
+        
+        # Phase 2: Core card data (only if missing)
+        if self._has_card_cache() and not self.database.needs_update():
+            print("\n2. Using existing card data")
+        else:
+            print("\n2. Downloading card data...")
+            self.scryfall.fetch_all_cards(force_download=False)  # Only get new/missing sets
         
         # Phase 3: Supplemental data
         print("\n3. Collecting supplemental data...")
-        for collector in [self.banlist, self.themes, self.keywords]:
-            collector.update()
+        self.banlist.fetch_banned_cards()
+        self.themes.update_all() 
+        self.keywords.download_rules()
         
         print("\nSystem ready!")
 
@@ -295,6 +301,10 @@ class DataEngine:
                 print(f"Error closing database: {e}")
         if hasattr(self, "conn"):
             self.conn = None
+
+    def _filter_sets(self, all_sets):
+        # Return all sets without any filtering
+        return all_sets
 
 if __name__ == "__main__":
     engine = DataEngine()

@@ -6,6 +6,7 @@ import time
 from typing import List, Dict, Optional, TYPE_CHECKING
 from tqdm import tqdm
 from collections import defaultdict
+import re
 
 if TYPE_CHECKING:
     from src.collectors.data_engine import DataEngine
@@ -125,20 +126,15 @@ class ScryfallCollector:
             print("No metadata file found")
     
     def fetch_all_cards(self, force_download: bool = False) -> bool:
-        """Fetch all cards while handling rate limits"""
-        try:
-            # Simplified set processing
-            sets_data = self._get_available_sets()
-            for set_data in tqdm(sets_data, desc="Processing sets"):
-                self._process_set(set_data, force_download)
-            
-            self.metadata['last_update'] = datetime.now().isoformat()
-            self.save_metadata()
-            return True
+        print(f"Downloading cards to: {self.sets_dir}")
+        sets = self._get_available_sets()
+        print(f"Found {len(sets)} valid sets to process")
         
-        except Exception as e:
-            print(f"Fatal error: {e}")
-            return False
+        for set_data in tqdm(sets, desc="Processing sets"):
+            self._process_set(set_data, force_download)
+        
+        print(f"\nCard data collection complete in {self.sets_dir}")
+        return True
     
     def _fetch_sets_catalog(self, force: bool = False) -> Dict:
         """Get list of all sets from Scryfall"""
@@ -201,52 +197,87 @@ class ScryfallCollector:
         return False
     
     def _filter_sets(self, sets_data: List[Dict]) -> List[Dict]:
-        """Filter and sort sets based on criteria"""
-        print("\nAnalyzing sets from Scryfall:")
+        """NO FILTERING - Return all sets"""
+        print("\nProcessing sets from Scryfall:")
         print(f"Total sets from API: {len(sets_data)}")
         
-        filtered = []
-        skipped_reasons = defaultdict(list)
+        # Remove all filtering logic - just return the sorted list
+        filtered = sets_data
         
-        for set_data in sets_data:
-            set_code = set_data['code']
-            set_name = set_data['name']
-            
-            # Debug print for a few sets to see what's happening
-            if len(filtered) < 3:
-                print(f"\nDebug set data for {set_name}:")
-                print(f"- digital: {set_data.get('digital', False)}")
-                print(f"- games: {set_data.get('games', [])}")
-                print(f"- set_type: {set_data.get('set_type', 'unknown')}")
-            
-            # Skip digital-only sets
-            if set_data.get('digital', False):
-                skipped_reasons['digital'].append(f"{set_name} ({set_code})")
-                continue
-            
-            # Skip special sets
-            if any(x in set_name.lower() for x in ['art series', 'minigame']):
-                skipped_reasons['special'].append(f"{set_name} ({set_code})")
-                continue
-            
-            # Accept all non-digital sets for now
-            filtered.append(set_data)
+        # Sort by release date
+        filtered.sort(key=lambda x: x['released_at'], reverse=True)
         
-        # Sort by release date, newest first
-        filtered.sort(key=lambda x: x.get('released_at', '0000-01-01'), reverse=True)
-        
-        # Print filtering stats
-        print("\nFiltering results:")
-        print(f"- Total sets: {len(sets_data)}")
-        print(f"- Kept sets: {len(filtered)}")
-        print("\nSkipped sets:")
-        for reason, sets in skipped_reasons.items():
-            print(f"- {reason}: {len(sets)} sets")
-            if len(sets) < 5:  # Show examples for small groups
-                for set_name in sets:
-                    print(f"  - {set_name}")
-        
+        print(f"\nProcessing {len(filtered)} sets total")
         return filtered
+
+    def _get_available_sets(self) -> List[Dict]:
+        """Get filtered list of available sets"""
+        catalog = self._fetch_sets_catalog()
+        return self._filter_sets(catalog.get('data', []))
+
+    def _process_set(self, set_data: Dict, force: bool = False):
+        """Process an individual set"""
+        set_code = set_data['code']
+        cache_file = self.sets_dir / f"{set_code}.json"
+        
+        print(f"\nProcessing set: {set_data['name']} ({set_code})")
+        if not force and cache_file.exists():
+            # Check if existing file is valid
+            try:
+                with open(cache_file, 'r') as f:
+                    existing_data = json.load(f)
+                    if len(existing_data) > 0:
+                        print(f"Using cached {set_code} ({len(existing_data)} cards)")
+                        return True
+            except:
+                pass
+        
+        if not force and not self.needs_update(set_code, set_data):
+            return
+        
+        print(f"Processing {set_data['name']} ({set_code})...")
+        self._fetch_set(set_code, set_data)
+
+    def _process_legacy_set_file(self, file_path: Path) -> bool:
+        """Convert legacy set file to new format with validation"""
+        try:
+            # Read file with error checking
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    legacy_data = json.load(f)
+            except json.JSONDecodeError as e:
+                print(f"Corrupted JSON in {file_path.name}: {e}")
+                return False
+            
+            # Check if it's a legacy format (no 'data' key)
+            if 'data' not in legacy_data:
+                print(f"Migrating legacy set file: {file_path.name}")
+                
+                # Validate card data structure
+                if not isinstance(legacy_data, list):
+                    print(f"Invalid legacy format in {file_path.name}")
+                    return False
+                
+                # Create new structure
+                new_data = {
+                    'data': legacy_data,
+                    'has_more': False,
+                    'next_page': None
+                }
+                
+                # Save with validation
+                try:
+                    with open(file_path, 'w', encoding='utf-8') as f:
+                        json.dump(new_data, f, indent=2)
+                    return True
+                except Exception as e:
+                    print(f"Error saving migrated file {file_path.name}: {e}")
+                    return False
+                
+        except Exception as e:
+            print(f"Error migrating {file_path.name}: {e}")
+        
+        return False
 
 if __name__ == "__main__":
     collector = ScryfallCollector()

@@ -153,6 +153,10 @@ class BanlistCollector:
         with open(output_file, 'w', encoding='utf-8') as f:
             f.write(output)
 
+    def update(self):
+        """Public update method"""
+        return self.fetch_banned_cards()
+
 if __name__ == "__main__":
     collector = BanlistCollector()
     

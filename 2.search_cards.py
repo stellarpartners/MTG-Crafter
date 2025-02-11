@@ -22,9 +22,10 @@ def main():
         print("\nMTG Card Search")
         print("1. Search by card name")
         print("2. Search card text")
-        print("3. Exit")
+        print("3. Show database summary")
+        print("4. Exit")
         
-        choice = input("\nChoose an option (1-3): ")
+        choice = input("\nChoose an option (1-4): ")
         
         if choice == '1':
             name = input("\nEnter card name: ")
@@ -50,6 +51,26 @@ def main():
                     print(f"\n...and {len(results) - 5} more results")
                     
         elif choice == '3':
+            from src.database.card_database import CardDatabase
+            db = CardDatabase()
+            try:
+                # Get total number of cards in the database
+                cursor = db.conn.execute("SELECT COUNT(*) as count FROM cards")
+                count = cursor.fetchone()["count"]
+                print(f"\nTotal cards in database: {count}")
+
+                # List first 10 card names from the database
+                print("\nListing first 10 card names:")
+                cursor = db.conn.execute("SELECT name FROM cards LIMIT 10")
+                rows = cursor.fetchall()
+                if rows:
+                    for row in rows:
+                        print(f"- {row['name']}")
+                else:
+                    print("No cards found in the database.")
+            except Exception as e:
+                print(f"Error retrieving database summary: {e}")
+        elif choice == '4':
             break
             
         else:

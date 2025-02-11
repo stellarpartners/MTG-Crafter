@@ -33,7 +33,12 @@ class Manalysis:
             card_db: CardDatabase object
         """
         print(f"[DEBUG] Initializing Manalysis with card_db: {card_db}") 
-        self.decklist = decklist
+        self.decklist = {}
+        for name, qty in decklist.items():
+            if card_db.get_card(name):  # Only include valid cards
+                self.decklist[name] = qty
+            else:
+                print(f"Excluding invalid card: {name}")
         self.card_db = card_db
         if not self.card_db.is_loaded:
             print("Card database not loaded. Path:", self.card_db.db_path)

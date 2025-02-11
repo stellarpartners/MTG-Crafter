@@ -6,6 +6,7 @@ from typing import Tuple, List
 import os
 import requests
 from tqdm import tqdm
+import time
 
 from src.collectors.data_engine import DataEngine
 from src.database.card_database import CardDatabase
@@ -20,12 +21,13 @@ def show_main_menu():
     print("==================================")
     print("\nMain Menu:")
     print("1. Show Cache Status")
-    print("2. Fresh Start (Download & Compile Everything)")
+    print("2. Update All Data")
     print("3. Update Individual Component Cache")
     print("4. Build SQLite Database")
-    print("5. Exit")
+    print("5. Delete Database")
+    print("6. Exit")
     
-    return input("\nSelect an option (1-5): ")
+    return input("\nSelect an option (1-6): ")
 
 def show_update_menu():
     print("\nUpdate Component Cache:")
@@ -102,16 +104,22 @@ def build_sqlite_database(engine: DataEngine):
     """Build SQLite database from collected data"""
     print("\nBuilding SQLite database...")
     
-    # Remove JSON-related comments and logic
-    db = CardDatabase()
+    # Force rebuild
+    engine.database.force_close()
+    engine.database.create_tables()
+    engine.database.load_data()  # This will now load from JSON files
     
-    if db.needs_update():
-        print("Database needs update - rebuilding...")
-        db.force_close()
-        Path(db.db_path).unlink(missing_ok=True)
-        db = CardDatabase()  # Create fresh instance
-        
-    print(f"Database ready at: {db.db_path}")
+    # Verification
+    db = engine.database
+    cursor = db.conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    print("\nDatabase tables:", [row[0] for row in cursor.fetchall()])
+    
+    cursor = db.conn.execute("SELECT COUNT(*) FROM cards")
+    print("Total cards:", cursor.fetchone()[0])
+
+    # After building database
+    db_path = Path("data/database/cards.db")
+    print(f"Database size: {db_path.stat().st_size / 1024:.1f} KB")
 
 def update_individual_cache(engine: DataEngine):
     """Update individual cache components"""
@@ -160,37 +168,13 @@ def download_scryfall_data(engine: DataEngine):
     sets_url = "https://api.scryfall.com/sets"
     all_sets = requests.get(sets_url).json()['data']
     
-    # Filter sets before processing
-    valid_types = [
-        'core', 'expansion', 'commander', 'draft_innovation',
-        'masters', 'arsenal', 'from_the_vault', 'premium_deck',
-        'duel_deck', 'starter', 'box', 'promo', 'token', 'memorabilia',
-        'funny', 'planechase', 'archenemy', 'treasure_chest'
-    ]
-    
-    excluded_types = [
-        'alchemy', 'minigame', 'masterpiece', 'digital', 
-        'art_series', 'vanguard', 'meta', 'augment', 'test'
-    ]
-    
-    # Pre-filter sets
-    filtered_sets = [
-        s for s in all_sets 
-        if s.get('set_type') in valid_types 
-        and s.get('set_type') not in excluded_types
-        and not any(c in s['code'].lower() for c in ['test', 'tst', 'demo', 'fake', 'pdft', 'pdnt'])
-    ]
-    
-    print(f"\nOriginal set count: {len(all_sets)}")
-    print(f"Filtered set count: {len(filtered_sets)}")
-    print(f"Excluded {len(all_sets) - len(filtered_sets)} non-card sets")
-    
-    # Create mapping of normalized set codes to set data
+    # Use all sets, no filtering
     current_sets = {}
-    for s in filtered_sets:  # Use filtered list here
+    for s in all_sets:
         norm_code = s['code'].lower()
         current_sets[norm_code] = s
         current_sets[norm_code]['file_name'] = f"{s['code']}.json"
+    print(f"\nTotal sets from Scryfall: {len(all_sets)}")
 
     # Find missing and outdated sets
     new_sets = []
@@ -201,35 +185,36 @@ def download_scryfall_data(engine: DataEngine):
         else:
             existing_file = existing_sets[norm_code]
             try:
+                # Check if file needs migration/updating
                 with open(existing_file, 'r') as f:
                     file_data = json.load(f)
-                    
-                    # Updated validation for older set formats
-                    if 'data' not in file_data:
-                        raise ValueError("Legacy set format - missing data array")
-                        
-                    # Handle pagination fields conditionally
-                    if file_data.get('has_more', False) and 'next_page' not in file_data:
-                        raise ValueError("Missing next_page for paginated set")
-                        
-                # Handle legacy sets without updated_at
+                
+                if 'data' not in file_data:
+                    if engine.scryfall._process_legacy_set_file(existing_file):
+                        print(f"Migrated legacy set: {existing_file.name}")
+                        with open(existing_file, 'r') as f:
+                            file_data = json.load(f)
+                    else:
+                        raise ValueError("Failed to migrate legacy set")
+                
+                if 'data' not in file_data:
+                    raise ValueError("Invalid set format after migration")
+                
                 update_date = set_data.get('updated_at') or set_data.get('released_at')
                 if not update_date:
                     raise ValueError("No valid timestamp in set metadata")
-                    
-                # Rest of date comparison logic...
-                file_mtime = datetime.fromtimestamp(existing_file.stat().st_mtime)
-                set_update = datetime.fromisoformat(update_date)
                 
+                set_update = datetime.fromisoformat(update_date.replace('Z', '+00:00'))
+                file_mtime = datetime.fromtimestamp(existing_file.stat().st_mtime)
+
                 if set_update > file_mtime:
                     print(f"Update needed for {set_data['code']}:")
-                    print(f"  Set updated: {set_update}")
-                    print(f"  File modified: {file_mtime}")
+                    print(f"  Set updated: {set_update.strftime('%Y-%m-%d %H:%M')}")
+                    print(f"  File modified: {file_mtime.strftime('%Y-%m-%d %H:%M')}")
                     new_sets.append(set_data)
                     existing_file.unlink()
                 else:
                     print(f"{set_data['code']} is up-to-date")
-                    
             except Exception as e:
                 print(f"Validation failed for {existing_file.name}: {str(e)}")
                 new_sets.append(set_data)
@@ -248,53 +233,55 @@ def download_scryfall_data(engine: DataEngine):
     
     for set_data in tqdm(new_sets, desc="Downloading sets"):
         set_code = set_data['code']
-        set_url = set_data['search_uri']
-        
         try:
-            # Skip test sets and invalid codes
-            invalid_codes = ['test', 'tst', 'demo', 'fake', 'pdft', 'pdnt']
-            if any(c in set_code.lower() for c in invalid_codes):
-                print(f"Skipping invalid set: {set_code}")
+            # Get complete set metadata
+            set_meta_url = f"https://api.scryfall.com/sets/{set_code.lower()}"
+            meta_response = requests.get(set_meta_url)
+            meta_response.raise_for_status()
+            set_metadata = meta_response.json()
+
+            # Get all cards with pagination
+            all_cards = []
+            cards_url = set_metadata.get('search_uri')
+            if not cards_url:
+                print(f"Skipping {set_code} - no valid search URI")
                 continue
-                
-            # Additional check for set type
-            valid_types = [
-                'core', 'expansion', 'commander', 'draft_innovation',
-                'masters', 'arsenal', 'from_the_vault', 'premium_deck',
-                'duel_deck', 'starter', 'box', 'promo', 'token', 'memorabilia',
-                'funny', 'planechase', 'archenemy', 'treasure_chest'
-            ]
+
+            while cards_url:
+                response = requests.get(cards_url, params={'format': 'json'})
+                response.raise_for_status()
+                data = response.json()
+                all_cards.extend(data.get('data', []))
+                cards_url = data.get('next_page')
+                time.sleep(0.1)  # Respect rate limits
+
+            # Build complete dataset
+            combined_data = {
+                'object': 'set',
+                'code': set_metadata.get('code', '').upper(),
+                'name': set_metadata.get('name', 'Unknown Set'),
+                'released_at': set_metadata.get('released_at'),
+                'set_type': set_metadata.get('set_type', 'unknown'),
+                'card_count': len(all_cards),
+                'data': all_cards
+            }
+
+            # Validate structure before saving
+            if not isinstance(combined_data.get('data'), list):
+                raise ValueError("Invalid card data format")
+
+            # Save with atomic write
+            temp_path = cache_dir / f"{set_code}.tmp"
+            with open(temp_path, 'w') as f:
+                json.dump(combined_data, f, indent=2)
             
-            # Explicitly excluded types
-            excluded_types = [
-                'alchemy', 'minigame', 'masterpiece', 'digital', 
-                'art_series', 'vanguard', 'meta', 'augment'
-            ]
-            
-            if set_data.get('set_type') in excluded_types:
-                print(f"Skipping excluded set type: {set_code} ({set_data.get('set_type')})")
-                continue
-            elif set_data.get('set_type') not in valid_types:
-                print(f"Skipping unknown set type: {set_code} ({set_data.get('set_type')})")
-                continue
-                
-            # Validate set URL format
-            if not set_url.startswith("https://api.scryfall.com/cards/search"):
-                print(f"Skipping invalid set URL for {set_code}: {set_url}")
-                continue
-                
-            # Download set data
-            response = requests.get(set_url, params={'format': 'json'})
-            response.raise_for_status()
-            
-            # Save to cache
-            with open(cache_dir / f"{set_code}.json", 'w') as f:
-                json.dump(response.json(), f)
-                
+            # Replace existing file atomically
+            final_path = cache_dir / f"{set_code}.json"
+            temp_path.replace(final_path)
+
         except Exception as e:
-            print(f"Error downloading {set_code}: {str(e)}")
-            
-    # ... existing code to build combined dataset ...
+            print(f"Failed to download {set_code}: {str(e)}")
+            continue
 
 def main():
     """Main program loop"""
@@ -306,13 +293,20 @@ def main():
         if choice == "1":
             print_cache_status(engine)
         elif choice == "2":
-            download_scryfall_data(engine)
-            engine.cold_start()
+            engine.update_if_needed()
         elif choice == "3":
             update_individual_cache(engine)
         elif choice == "4":
             build_sqlite_database(engine)
         elif choice == "5":
+            print("\nDeleting database...")
+            engine.database.force_close()
+            try:
+                Path(engine.database.db_path).unlink()
+                print("Database deleted successfully")
+            except Exception as e:
+                print(f"Error deleting database: {e}")
+        elif choice == "6":
             print("Exiting...")
             break
         else:
@@ -321,4 +315,9 @@ def main():
         input("\nPress Enter to continue...")
 
 if __name__ == "__main__":
-    main() 
+    main()
+
+# After running "Update All Data" and "Build SQLite Database"
+# Check cache directory
+cache_dir = Path("cache/scryfall/sets")
+print(f"Set files: {len(list(cache_dir.glob('*.json')))}") 
