@@ -36,6 +36,17 @@ class DataEngine:
         self.database = CardDatabase()
         print(f"DataEngine: CardDatabase object ID: {id(self.database)}")
         
+        # Check if database needs initial load
+        if self.database._is_database_empty():
+            print("⚠️ Database empty - run data collection first")
+            self.database.is_loaded = False
+        else:
+            try:
+                self.database.load_data()
+            except Exception as e:
+                print(f"Failed to load database: {e}")
+                self.database.is_loaded = False
+        
         # Initialize collectors
         self.scryfall = ScryfallCollector(
             cache_dir=str(self.cache_dir / "scryfall")

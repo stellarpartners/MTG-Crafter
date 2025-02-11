@@ -6,13 +6,19 @@ import json
 from datetime import datetime
 from src.database.card_database import CardDatabase
 from .models import Card, ManaCost
+from src.database.card_repository import CardRepository
 
 class DeckLoader:
     """Handles importing and saving decks"""
     
-    def __init__(self, card_db: CardDatabase):
-        """Initialize loader with card database"""
-        self.card_db = card_db
+    def __init__(self, card_repo: CardRepository):
+        """
+        Initialize deck loader with card repository
+        
+        Args:
+            card_repo: CardRepository object for card validation
+        """
+        self.card_repo = card_repo
         self.deck_dir = Path("saved_decks")
         self.deck_dir.mkdir(exist_ok=True)
         self.commander = None
@@ -77,8 +83,7 @@ class DeckLoader:
                     card_name = self._clean_card_name(match.group(2))
                     
                     # Validate card exists in database
-                    card = self.card_db.get_card(card_name)
-                    if card:
+                    if self.card_repo.get_card(card_name):
                         deck[card_name] = quantity
                     else:
                         print(f"Warning: Card not found: {card_name}")
@@ -315,11 +320,15 @@ class DeckLoader:
 
     def load_deck(self, deck_id: str) -> Dict[str, int]:
         """Load a saved deck by ID (filename)"""
-        deck_file = self.deck_dir / f"{deck_id}.json"
-        try:
-            with open(deck_file, 'r') as f:
-                data = json.load(f)
-                return data.get('cards', {})
-        except Exception as e:
-            print(f"Error loading deck: {str(e)}")
-            return {} 
+        deck_path = self.deck_dir / f"{deck_id}.json"
+        if not deck_path.exists():
+            return {}
+            
+        with open(deck_path, 'r') as f:
+            raw_deck = json.load(f)
+            
+        return {
+            name: qty 
+            for name, qty in raw_deck.items() 
+            if self.card_repo.get_card(name)  # Repository validation
+        } 

@@ -5,6 +5,7 @@ Manalysis - Interactive tool for Magic: The Gathering mana analysis
 
 from src.manalysis.deck_loader import DeckLoader
 from src.manalysis.analyzer import Manalysis
+from src.database.card_repository import CardRepository
 from src.database.card_database import CardDatabase
 from pathlib import Path
 from typing import Dict
@@ -81,13 +82,13 @@ def main():
     print("Welcome to Manalysis!")
     print("=" * 40)
     
-    # Initialize and validate database
+    # Initialize repository
     db = CardDatabase()
-    if not validate_database(db):
-        return
-
-    loader = DeckLoader(db)
-    main_menu_loop(loader, db)
+    card_repo = CardRepository(db)
+    
+    # Pass repository to DeckLoader
+    loader = DeckLoader(card_repo)
+    main_menu_loop(loader, card_repo)
 
 def validate_database(db: CardDatabase) -> bool:
     """Ensure database exists and contains data"""
@@ -113,7 +114,7 @@ def validate_database(db: CardDatabase) -> bool:
         print(f"Database error: {e}")
         return False
 
-def main_menu_loop(loader: DeckLoader, db: CardDatabase):
+def main_menu_loop(loader: DeckLoader, repo: CardRepository):
     """Handle main menu interactions"""
     while True:
         print("\nMain Menu:")
@@ -128,15 +129,15 @@ def main_menu_loop(loader: DeckLoader, db: CardDatabase):
             print("\nGoodbye!")
             break
         elif choice == "1":
-            handle_saved_deck(loader, db)
+            handle_saved_deck(loader, repo)
         elif choice == "2":
-            handle_new_deck(loader, db)
+            handle_new_deck(loader, repo)
         elif choice == "3":
             list_saved_decks(loader)
         else:
             print("Invalid choice. Please try again.")
 
-def handle_saved_deck(loader: DeckLoader, db: CardDatabase):
+def handle_saved_deck(loader: DeckLoader, repo: CardRepository):
     """Handle saved deck selection and analysis"""
     decks = loader.list_saved_decks()
     if not decks:
@@ -151,12 +152,12 @@ def handle_saved_deck(loader: DeckLoader, db: CardDatabase):
         selection = int(input("\nEnter deck number: ")) - 1
         deck_data = decks[selection]
         decklist = loader.load_deck(deck_data['id'])
-        analyzer = Manalysis(decklist, db)
+        analyzer = Manalysis(decklist, repo)
         show_analysis_menu(analyzer, decklist)
     except (ValueError, IndexError):
         print("Invalid selection.")
 
-def handle_new_deck(loader: DeckLoader, db: CardDatabase):
+def handle_new_deck(loader: DeckLoader, repo: CardRepository):
     """Handle new deck import and analysis"""
     print("\nPaste decklist (format: 1x Card Name)")
     decklist = loader.load_from_clipboard()
@@ -166,7 +167,7 @@ def handle_new_deck(loader: DeckLoader, db: CardDatabase):
         return
         
     print(f"\nLoaded {sum(decklist.values())} cards")
-    analyzer = Manalysis(decklist, db)
+    analyzer = Manalysis(decklist, repo)
     show_analysis_menu(analyzer, decklist)
     
     if input("\nSave this deck? (y/n): ").lower() == 'y':

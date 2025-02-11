@@ -7,6 +7,8 @@ from typing import List, Dict, Optional, TYPE_CHECKING
 from tqdm import tqdm
 from collections import defaultdict
 import re
+from src.database.card_database import CardDatabase
+from src.utils.json_validator import JSONValidator
 
 if TYPE_CHECKING:
     from src.collectors.data_engine import DataEngine
@@ -134,6 +136,11 @@ class ScryfallCollector:
             self._process_set(set_data, force_download)
         
         print(f"\nCard data collection complete in {self.sets_dir}")
+        
+        # After collecting all sets
+        if not CardDatabase().is_loaded:
+            CardDatabase().load_data()
+            
         return True
     
     def _fetch_sets_catalog(self, force: bool = False) -> Dict:
@@ -162,7 +169,7 @@ class ScryfallCollector:
         search_url = f"{self.BASE_URL}/cards/search?q=set:{set_code}&unique=prints"
         
         try:
-            cards = []
+            all_cards = []
             while search_url:
                 time.sleep(self.REQUEST_DELAY)
                 response = requests.get(search_url)
@@ -174,22 +181,40 @@ class ScryfallCollector:
                 response.raise_for_status()
                 page_data = response.json()
                 
-                cards.extend(page_data['data'])
+                # Store the full API response structure
+                all_cards.extend(page_data['data'])
                 search_url = page_data.get('next_page')
             
-            if cards:
-                with open(cache_file, 'w') as f:
-                    json.dump(cards, f, indent=2)
-                
-                self.metadata['sets'][set_code] = {
-                    'updated_at': set_data.get('updated_at'),  # Handle missing updated_at
-                    'card_count': len(cards),
-                    'name': set_data['name']
+            if all_cards:
+                # Save in proper Scryfall response format
+                set_data = {
+                    "object": "list",
+                    "has_more": False,
+                    "next_page": None,
+                    "data": all_cards
                 }
-                self.save_metadata()
                 
-                print(f"Cached {len(cards)} cards")
-                return True
+                # Add validation before saving
+                if not JSONValidator.validate_set_structure(set_data):
+                    print(f"❌ Validation failed for {set_code}, not saving")
+                    return False
+                
+                try:
+                    with open(cache_file, 'w') as f:
+                        json.dump(set_data, f, indent=2, ensure_ascii=False)
+                    
+                    self.metadata['sets'][set_code] = {
+                        'updated_at': set_data.get('updated_at'),
+                        'card_count': len(all_cards),
+                        'name': set_data['name']
+                    }
+                    self.save_metadata()
+                    
+                    print(f"Cached {len(all_cards)} cards")
+                    return True
+                except Exception as e:
+                    print(f"Error saving {set_code}: {e}")
+                    return False
                 
         except Exception as e:
             print(f"Error downloading set {set_code}: {e}")
@@ -239,45 +264,79 @@ class ScryfallCollector:
         self._fetch_set(set_code, set_data)
 
     def _process_legacy_set_file(self, file_path: Path) -> bool:
-        """Convert legacy set file to new format with validation"""
+        """Convert legacy set file to new format with enhanced validation"""
         try:
-            # Read file with error checking
+            # Read file with improved error handling
             try:
                 with open(file_path, 'r', encoding='utf-8') as f:
                     legacy_data = json.load(f)
-            except json.JSONDecodeError as e:
-                print(f"Corrupted JSON in {file_path.name}: {e}")
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                print(f"🚨 Corrupted JSON in {file_path.name}: {e}")
                 return False
             
-            # Check if it's a legacy format (no 'data' key)
-            if 'data' not in legacy_data:
-                print(f"Migrating legacy set file: {file_path.name}")
+            # Enhanced legacy format detection
+            if not isinstance(legacy_data, dict) or 'data' not in legacy_data:
+                print(f"🔧 Migrating legacy set file: {file_path.name}")
                 
                 # Validate card data structure
                 if not isinstance(legacy_data, list):
-                    print(f"Invalid legacy format in {file_path.name}")
+                    print(f"❌ Invalid legacy format in {file_path.name} - root is {type(legacy_data)}")
                     return False
                 
-                # Create new structure
+                # Create new structure with validation
                 new_data = {
+                    'object': 'set',
                     'data': legacy_data,
                     'has_more': False,
-                    'next_page': None
+                    'next_page': None,
+                    'card_count': len(legacy_data),
+                    'warnings': ['Migrated from legacy format']
                 }
                 
-                # Save with validation
+                # Validate before saving
+                if not self._validate_set_structure(new_data):
+                    print(f"❌ Validation failed for migrated {file_path.name}")
+                    return False
+                
+                # Atomic save with backup
                 try:
+                    backup_path = file_path.with_suffix('.bak')
+                    file_path.replace(backup_path)
+                    
                     with open(file_path, 'w', encoding='utf-8') as f:
                         json.dump(new_data, f, indent=2)
                     return True
                 except Exception as e:
-                    print(f"Error saving migrated file {file_path.name}: {e}")
+                    print(f"❌ Error saving migrated file {file_path.name}: {e}")
+                    backup_path.replace(file_path)  # Restore backup
                     return False
                 
+            # After migration...
+            if not JSONValidator.validate_set_file(file_path):
+                print(f"❌ Migrated file failed validation: {file_path.name}")
+                return False
+            return True
+
         except Exception as e:
-            print(f"Error migrating {file_path.name}: {e}")
+            print(f"❌ Critical error processing {file_path.name}: {e}")
+            return False
+
+    def _validate_set_structure(self, set_data: dict) -> bool:
+        """Validate set structure against required schema"""
+        required_keys = {'object', 'data', 'card_count'}
+        if not required_keys.issubset(set_data.keys()):
+            print(f"Missing required keys: {required_keys - set_data.keys()}")
+            return False
         
-        return False
+        if not isinstance(set_data['data'], list):
+            print("Invalid data format - expected list")
+            return False
+        
+        if set_data['card_count'] != len(set_data['data']):
+            print("Card count mismatch")
+            return False
+        
+        return True
 
 if __name__ == "__main__":
     collector = ScryfallCollector()

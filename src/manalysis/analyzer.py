@@ -1,9 +1,9 @@
 from dataclasses import dataclass
-from typing import List, Dict, Set
+from typing import List, Dict, Set, Optional
 import random
 from collections import defaultdict
 import re
-from src.database.card_database import CardDatabase
+from src.database.card_repository import CardRepository
 
 @dataclass
 class GameState:
@@ -24,28 +24,35 @@ class CurveHealth:
 
 class Manalysis:
     """Class for analyzing mana distribution and running simulations"""
-    def __init__(self, decklist: Dict[str, int], card_db: CardDatabase):
+    REQUIRED_DB_VERSION = (1, 2)  # Major, minor version
+    COMPATIBLE_DB_SCHEMA = 1.1  # Minimum compatible schema version
+
+    def __init__(self, decklist: Dict[str, int], card_repo: CardRepository):
         """
-        Initialize analyzer with decklist and card database
+        Initialize analyzer with decklist and card repository
         
         Args:
             decklist: Dictionary mapping card names to quantities
-            card_db: CardDatabase object
+            card_repo: CardRepository object
         """
-        print(f"[DEBUG] Initializing Manalysis with card_db: {card_db}") 
+        print(f"[DEBUG] Initializing Manalysis with repository: {card_repo}") 
         self.decklist = {}
         for name, qty in decklist.items():
-            if card_db.get_card(name):  # Only include valid cards
+            if card_repo.get_card(name):  # Only include valid cards
                 self.decklist[name] = qty
             else:
                 print(f"Excluding invalid card: {name}")
-        self.card_db = card_db
-        if not self.card_db.is_loaded:
-            print("Card database not loaded. Path:", self.card_db.db_path)
+        self.card_repo = card_repo
+        if not card_repo.db.is_loaded:
+            print("Card database not loaded. Path:", card_repo.db.db_path)
             print("Please run '1.gather_data.py' to create the database")
-            self.card_db = None
+            self.card_repo = None
         else:
-            print("[DEBUG] Card database loaded successfully")
+            print("[DEBUG] Card database loaded via repository")
+        
+        if card_repo and not self._check_db_compatibility(card_repo.db):
+            raise ValueError(f"CardDatabase version {card_repo.db.version} incompatible. "
+                             f"Requires >= {self.COMPATIBLE_DB_SCHEMA}")
         
         self.lands = self._find_lands()
         self.mana_sources = {
@@ -53,6 +60,11 @@ class Manalysis:
         }
         self.commander = None
         self._analyze_mana_sources()
+    
+    def _check_db_compatibility(self, card_db):
+        """Verify database meets version requirements"""
+        return (card_db.version_major >= self.REQUIRED_DB_VERSION[0] and
+                card_db.version_minor >= self.REQUIRED_DB_VERSION[1])
     
     def _find_lands(self) -> List[str]:
         """Find all lands in the decklist"""
@@ -243,8 +255,8 @@ class Manalysis:
             
             lands_in_hand = [
                 card for card in hand 
-                if self.card_db.get_card(card) and 
-                   self.card_db.get_card(card).get('is_land', False)
+                if self.card_repo.get_card(card) and 
+                   self.card_repo.get_card(card).get('is_land', False)
             ]
             
             return GameState(
@@ -272,14 +284,14 @@ class Manalysis:
         """Calculate available mana from lands and rocks"""
         try:
             for land in state.lands_in_play:
-                card = self.card_db.get_card(land)
+                card = self.card_repo.get_card(land)
                 if card:
                     for color in card.get('produces_mana', []):
                         if color in 'WUBRG':
                             state.mana_available[color] += 1
             
             for rock in state.mana_rocks_in_play:
-                card = self.card_db.get_card(rock)
+                card = self.card_repo.get_card(rock)
                 if card:
                     for color in card.get('produces_mana', []):
                         if color in 'WUBRG':
@@ -304,7 +316,7 @@ class Manalysis:
             for card in castable:
                 cast_turns[card].append(turn)
                 state.hand.remove(card)
-                card_info = self.card_db.get_card(card)
+                card_info = self.card_repo.get_card(card)
                 if card_info and card_info.get('is_mana_rock', False):
                     state.mana_rocks_in_play.append(card)
         except Exception as e:
@@ -315,37 +327,14 @@ class Manalysis:
         castable = []
         for card in state.hand:
             if card not in state.lands_in_hand:
-                card_info = self.card_db.get_card(card)
+                card_info = self.card_repo.get_card(card)
                 if self._can_cast(card_info, state.mana_available):
                     castable.append(card)
         return castable
     
-    def _get_card_info(self, card_name: str) -> Dict:
-        """Get card information from our card database"""
-        if self.card_db is None:
-            return self._get_fallback_card_info(card_name)
-        
-        try:
-            card = self.card_db.get_card(card_name)
-            if card:
-                return {
-                    "mana_value": card.get('cmc', 0),
-                    "is_land": card.get('is_land', False),
-                    "type_line": card.get('type_line', ''),
-                    "colors": card.get('color_identity', []),
-                    "mana_cost": card.get('mana_cost', ''),
-                    "produces_mana": card.get('produces_mana', []),
-                    "is_mana_rock": 'artifact' in card.get('type_line', '').lower() 
-                                   and card.get('produces_mana'),
-                    "oracle_text": card.get('oracle_text', '')
-                }
-            else:
-                print(f"Warning: Card not found in database: {card_name}")
-                return self._get_fallback_card_info(card_name)
-        
-        except Exception as e:
-            print(f"Error getting card info for {card_name}: {str(e)}")
-            return self._get_fallback_card_info(card_name)
+    def _get_card_info(self, card_name: str) -> Optional[Dict]:
+        """Get card data using repository"""
+        return self.card_repo.get_card(card_name)
 
     def _get_fallback_card_info(self, card_name: str) -> Dict:
         """Fallback method to provide basic card info if DB lookup fails"""
@@ -536,7 +525,7 @@ class Manalysis:
         
         for card_name, quantity in self.decklist.items():
             try:
-                card = self.card_db.get_card(card_name)
+                card = self.card_repo.get_card(card_name)
                 if not card:
                     continue
                 
@@ -672,12 +661,8 @@ class Manalysis:
             
         return CurveHealth(status=status, message=message, distribution=distribution)
 
-    def calculate_color_stats(self) -> Dict:
+    def calculate_color_stats(self):
         """Calculate detailed color statistics for the deck"""
-        color_counts = {
-            'W': 0, 'U': 0, 'B': 0, 'R': 0, 'G': 0, 'C': 0
-        }
-        
         land_count = 0
         non_land_count = 0
         
@@ -705,23 +690,22 @@ class Manalysis:
             is_land = card.get('is_land', False)
             
             if is_land:
+                # Process land cards
                 land_count += quantity
                 produces_mana = card.get('produces_mana', [])
                 
                 for color in produces_mana:
                     land_produces[color] += quantity
                     
-                    # Count mana symbols on lands
-                    mana_cost = card.get('mana_cost', '')
-                    if mana_cost:
-                        for symbol in mana_cost:
-                            if symbol in color_counts:
-                                land_mana_symbols[symbol] += quantity
+                # Count mana symbols on lands
+                mana_cost = card.get('mana_cost', '')
+                if mana_cost:
+                    for symbol in mana_cost:
+                        if symbol in land_mana_symbols:
+                            land_mana_symbols[symbol] += quantity
             else:
                 non_land_count += quantity
                 colors = card.get('colors', [])
-                
-                print(f"Card: {card_name}, Colors: {colors}")  # Debugging
                 
                 for color in colors:
                     non_land_cards[color] += quantity
@@ -730,7 +714,7 @@ class Manalysis:
                 mana_cost = card.get('mana_cost', '')
                 if mana_cost:
                     for symbol in mana_cost:
-                        if symbol in color_counts:
+                        if symbol in non_land_mana_symbols:
                             non_land_mana_symbols[symbol] += quantity
         
         return {

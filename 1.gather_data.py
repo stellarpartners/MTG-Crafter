@@ -11,12 +11,8 @@ import time
 from src.collectors.data_engine import DataEngine
 from src.database.card_database import CardDatabase
 
-def print_header():
-    print("MTG Crafter - Data Management Tool")
-    print("==================================")
-
 def show_main_menu():
-    """Display main menu and handle input"""
+    """Display main menu"""
     print("\nMTG Crafter - Data Management Tool")
     print("==================================")
     print("\nMain Menu:")
@@ -26,8 +22,6 @@ def show_main_menu():
     print("4. Build SQLite Database")
     print("5. Delete Database")
     print("6. Exit")
-    
-    return input("\nSelect an option (1-6): ")
 
 def show_update_menu():
     print("\nUpdate Component Cache:")
@@ -149,7 +143,7 @@ def update_individual_cache(engine: DataEngine):
         input("\nPress Enter to continue...")
 
 def download_scryfall_data(engine: DataEngine):
-    """Download missing Scryfall sets using DataEngine's configuration"""
+    """Download missing Scryfall sets with enhanced validation"""
     cache_dir = engine.scryfall.sets_dir
     cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -270,35 +264,90 @@ def download_scryfall_data(engine: DataEngine):
             if not isinstance(combined_data.get('data'), list):
                 raise ValueError("Invalid card data format")
 
-            # Save with atomic write
-            temp_path = cache_dir / f"{set_code}.tmp"
-            with open(temp_path, 'w') as f:
-                json.dump(combined_data, f, indent=2)
+            # Add post-download validation
+            if not engine.scryfall._validate_set_structure(combined_data):
+                print(f"❌ Downloaded set {set_code} failed validation")
+                continue
+                
+            # Add checksum validation
+            expected_count = len(all_cards)
+            actual_count = combined_data.get('card_count', 0)
+            if expected_count != actual_count:
+                print(f"❌ Card count mismatch in {set_code} ({actual_count} vs {expected_count})")
+                continue
+
+            # Save with checksum
+            combined_data['_checksum'] = hash(json.dumps(combined_data['data']))
             
-            # Replace existing file atomically
-            final_path = cache_dir / f"{set_code}.json"
-            temp_path.replace(final_path)
+            # Retry failed writes
+            for attempt in range(3):
+                try:
+                    # Save with atomic write
+                    temp_path = cache_dir / f"{set_code}.tmp"
+                    with open(temp_path, 'w') as f:
+                        json.dump(combined_data, f, indent=2)
+                    
+                    # Replace existing file atomically
+                    final_path = cache_dir / f"{set_code}.json"
+                    temp_path.replace(final_path)
+
+                    # Post-save verification
+                    if not final_path.exists():
+                        print(f"❌ Failed to save {set_code} after 3 attempts")
+                        continue
+                    break
+                except IOError as e:
+                    print(f"⚠️ Write attempt {attempt+1} failed: {e}")
+                    time.sleep(0.5)
 
         except Exception as e:
-            print(f"Failed to download {set_code}: {str(e)}")
+            print(f"❌ Failed to download {set_code}: {str(e)}")
+            # Log full error details for debugging
+            with open("scryfall_errors.log", "a") as log:
+                log.write(f"{datetime.now()} - {set_code} - {str(e)}\n")
             continue
 
 def main():
-    """Main program loop"""
     engine = DataEngine()
-    
+
     while True:
-        choice = show_main_menu()
-        
-        if choice == "1":
+        show_main_menu()
+        choice = input("\nEnter your choice (1-6): ").strip().lower()
+
+        if choice == "1":  # Show Cache Status
             print_cache_status(engine)
-        elif choice == "2":
-            engine.update_if_needed()
-        elif choice == "3":
+            input("\nPress Enter to continue...")
+
+        elif choice == "2":  # Update All Data
+            print("\n=== Updating All Data ===")
+            print("1. Downloading Scryfall data...")
+            download_scryfall_data(engine)
+
+            print("\n2. Building database...")
+            try:
+                engine.database.load_data()
+                print("✅ Database updated successfully")
+            except Exception as e:
+                print(f"❌ Database build failed: {e}")
+            input("\nPress Enter to continue...")
+
+        elif choice == "3":  # Update Individual Component Cache
             update_individual_cache(engine)
-        elif choice == "4":
-            build_sqlite_database(engine)
-        elif choice == "5":
+
+        elif choice == "4":  # Build SQLite Database
+            print("\n=== Building Database ===")
+            if not list(Path("cache/scryfall/sets").glob("*.json")):
+                print("❌ No data available - run 'Update All Data' first")
+                input("\nPress Enter to continue...")
+            else:
+                try:
+                    engine.database.load_data()
+                    print("✅ Database built successfully")
+                except Exception as e:
+                    print(f"❌ Database build failed: {e}")
+                input("\nPress Enter to continue...")
+
+        elif choice == "5":  # Delete Database
             print("\nDeleting database...")
             engine.database.force_close()
             try:
@@ -306,13 +355,15 @@ def main():
                 print("Database deleted successfully")
             except Exception as e:
                 print(f"Error deleting database: {e}")
-        elif choice == "6":
+            input("\nPress Enter to continue...")
+
+        elif choice == "6":  # Exit
             print("Exiting...")
-            break
+            break  # Exit the loop
+
         else:
-            print("Invalid choice, please try again")
-        
-        input("\nPress Enter to continue...")
+            print("❌ Invalid choice. Please enter 1-6.")
+            input("\nPress Enter to continue...")
 
 if __name__ == "__main__":
     main()
